@@ -20,8 +20,6 @@ extern "C" {
     /** The numeric type used in the SolarPILOT API. */ 
     typedef float sp_number_t;
 
-    SPEXPORT int sp_test(int v);
-
     /** Creates a new data object in memory.  A data object stores a table of named values, where each value can be of any SolarPILOT datatype. */
     SPEXPORT sp_data_t sp_data_create();
 
