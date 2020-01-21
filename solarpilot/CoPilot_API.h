@@ -28,7 +28,24 @@ extern "C" {
 
     SPEXPORT void sp_set_value(sp_data_t p_data, const char* name, sp_number_t v);
 
-    SPEXPORT sp_number_t sp_get_value(sp_data_t p_data, const char* name);
+    SPEXPORT void sp_set_string(sp_data_t p_data, const char *name, const char *value);
+
+    /** Assigns value of type @a SSC_ARRAY */
+    SPEXPORT void sp_set_array(sp_data_t p_data, const char *name, sp_number_t *pvalues, int length);
+
+    /** Assigns value of type @a SSC_MATRIX . Matrices are specified as a continuous array, in row-major order.  Example: the matrix [[5,2,3],[9,1,4]] is stored as [5,2,3,9,1,4]. */
+    SPEXPORT void sp_set_matrix(sp_data_t p_data, const char *name, sp_number_t *pvalues, int nrows, int ncols);
+
+
+
+
+    SPEXPORT sp_number_t sp_get_number(sp_data_t p_data, const char* name);
+
+    /** Returns the value of a @a SSC_STRING variable with the given name. */
+    SPEXPORT const char *ssc_data_get_string(sp_data_t p_data, const char *name);
+
+    /** Returns the value of a @a SSC_ARRAY variable with the given name. */
+    SPEXPORT void sp_get_array(sp_data_t p_data, const char *name, sp_number_t* values, int *length);
 
 
 

@@ -1,5 +1,10 @@
 #include "CoPilot_API.h"
 
+static void EditorOutput(const char *msg)
+{
+    //SPFrame::Instance().ScriptMessageOutput(msg);
+}
+
 
 struct api_helper
 {
@@ -30,151 +35,282 @@ SPEXPORT void sp_data_free(sp_data_t p_data)
 SPEXPORT void sp_set_value(sp_data_t p_data, const char* name, sp_number_t v)
 {
     api_helper *mc = static_cast<api_helper*>(p_data);
-    if (mc->variables._varptrs.find(name) != mc->variables._varptrs.end())
+    
+    //make sure the specified variable exists
+    if (mc->variables._varptrs.find(name) == mc->variables._varptrs.end())
+        throw std::invalid_argument("No such variable: " + std::string(name));
+
+    //create a string copy of the variable name
+    std::string sname = (std::string)name;
+
+    //if it's a combo, make sure the specified combo choice exists
+    if (mc->variables._varptrs.at(sname)->ctype == "combo")
     {
-        mc->variables._varptrs[name]->set_from_string(to_string(v).c_str());
+        std::string svalue = my_to_string(v);
 
-
-
-        //------------???????
-        std::string arg = cxt.arg(1).as_string();
-        std::string sname = (std::string)name;
-
-        //make sure the specified variable exists
-        if (vmap->_varptrs.find(sname) == vmap->_varptrs.end())
+        std::vector< std::string > cbchoices = mc->variables._varptrs.at(sname)->combo_get_choices();
+        if (std::find(cbchoices.begin(), cbchoices.end(), sname) != cbchoices.end())
         {
-            EditorOutput(("Invalid variable name: " + sname).c_str());
-            cxt.result().assign(0.);
-            return;
+            //valid variable and selection
+            mc->variables._varptrs.at(sname)->set_from_string(svalue.c_str());
         }
         else
         {
-            //if it's a combo, make sure the specified combo choice exists
-            if (vmap->_varptrs.at(sname)->ctype == "combo")
-            {
-                std::vector< std::string > cbchoices = vmap->_varptrs.at(sname)->combo_get_choices();
-                if (std::find(cbchoices.begin(), cbchoices.end(), arg) != cbchoices.end())
-                {
-                    //valid variable and selection
-                    vmap->_varptrs.at(sname)->set_from_string(arg.c_str());
-                    cxt.result().assign(arg);
-                }
-                else
-                {
-                    EditorOutput(("Invalid variable choice for \"" + sname + "\": \"" + arg + "\" is not a valid option.").c_str());
-                    cxt.result().assign(0.);
-                    return;
-                }
-            }
-            else
-            {
-                //no problems, just set the variable
-                vmap->_varptrs.at(sname)->set_from_string(arg.c_str());
-                cxt.result().assign(arg);
-            }
+            throw std::invalid_argument("Invalid variable choice for \"" + sname + "\": \"" + my_to_string(v) + "\" is not a valid option.");
         }
+    }
+    else
+    {
+        //no problems, just set the variable
+        std::string svalue = my_to_string(v);
+        mc->variables._varptrs.at(sname)->set_from_string(svalue.c_str());
+        return;
     }
 }
 
-SPEXPORT sp_number_t sp_get_value(sp_data_t p_data, const char* name)
+SPEXPORT void sp_set_string(sp_data_t p_data, const char *name, const char *value)
 {
     api_helper *mc = static_cast<api_helper*>(p_data);
-    //return (sp_number_t)mc->get(name);
+    std::string sname = (std::string)name;
+    if (mc->variables._varptrs.find(name) == mc->variables._varptrs.end())
+    {
+        throw std::invalid_argument("No such variable: " + sname);
+    }
+    else
+    {
+        mc->variables._varptrs.at(sname)->set_from_string(value);
+    }
+}
 
-    spbase *var = vmap->_varptrs[name.ToStdString()];
-    std::string varstr = var->as_string();
+
+/** Assigns value of type SP_VEC_DOUBLE */
+SPEXPORT void sp_set_array(sp_data_t p_data, const char *name, sp_number_t *pvalues, int length)
+{
+    api_helper *mc = static_cast<api_helper*>(p_data);
+
+    //make sure the specified variable exists
+    if (mc->variables._varptrs.find(name) == mc->variables._varptrs.end())
+        throw std::invalid_argument("No such variable: " + std::string(name));
+
+    //make sure the data type of the variable provided matches the internal data type
+    if (mc->variables._varptrs.at(name)->dattype != SP_DATTYPE::SP_VEC_DOUBLE)
+        throw std::runtime_error("Data type of " + std::string(name) + " is not compatible with sp_set_array. " + __FILE__ + ":" + my_to_string(__LINE__));
+
+    //create a string copy of the variable name
+    std::string sname = (std::string)name;
+
+    //collect the array data into a string with correct format
+
+    std::stringstream array_string;
+    
+    for (size_t i = 0; i < length; i++)
+        array_string << pvalues[i] << ",";
+    
+    //assign the array
+    mc->variables._varptrs.at(name)->set_from_string(array_string.str().c_str());
+
+}
+
+/** Assigns value of type @a SSC_MATRIX . Matrices are specified as a continuous array, in row-major order.  Example: the matrix [[5,2,3],[9,1,4]] is stored as [5,2,3,9,1,4]. */
+SPEXPORT void sp_set_matrix(sp_data_t p_data, const char *name, sp_number_t *pvalues, int nrows, int ncols)
+{
+    /*
+    rows separated by ';'
+    cols separated by ','
+    */
+
+    api_helper *mc = static_cast<api_helper*>(p_data);
+
+    //make sure the specified variable exists
+    if (mc->variables._varptrs.find(name) == mc->variables._varptrs.end())
+        throw std::invalid_argument("No such variable: " + std::string(name));
+
+    //make sure the data type of the variable provided matches the internal data type
+    if (mc->variables._varptrs.at(name)->dattype != SP_DATTYPE::SP_MATRIX_T)
+        throw std::runtime_error("Data type of " + std::string(name) + " is not compatible with sp_set_matrix. " + __FILE__ + ":" + my_to_string(__LINE__));
+
+    //create a string copy of the variable name
+    std::string sname = (std::string)name;
+
+    //collect the array data into a string with correct format
+
+    std::stringstream matrix_string;
+
+    for (size_t i = 0; i < nrows; i++)
+    {
+        for (size_t j = 0; j < ncols; j++)
+        {
+            matrix_string << pvalues[i*ncols + j] << ",";
+        }
+        matrix_string << ';';
+    }
+        
+    //assign the matrix
+    mc->variables._varptrs.at(name)->set_from_string(matrix_string.str().c_str());
+
+}
+
+
+SPEXPORT sp_number_t sp_get_number(sp_data_t p_data, const char* name)
+{
+    /*
+    Return value of type double, int, or bool. Bools are returned as 0 or 1.
+    */
+
+    api_helper *mc = static_cast<api_helper*>(p_data);
+
+    if (mc->variables._varptrs.find(name) != mc->variables._varptrs.end())
+        throw std::invalid_argument("No such variable: " + std::string(name));
+
+    //make sure the data type of the variable provided matches the internal data type
+    int dattype = mc->variables._varptrs.at(name)->dattype;
+    if (dattype != SP_DATTYPE::SP_DOUBLE || dattype != SP_DATTYPE::SP_INT)
+        throw std::runtime_error("Data type of " + std::string(name) + " is not compatible with sp_set_matrix. " + __FILE__ + ":" + my_to_string(__LINE__));
+
+
+    spbase *var = mc->variables._varptrs[name];
 
     switch (var->dattype)
     {
     case SP_INT:
     {
         spvar<int> *v = static_cast<spvar<int>*>(var);
-        cxt.result().assign((double)v->val);
-        return;
+        return (sp_number_t)v->val;
     }
     case SP_DOUBLE:
     {
         spvar<double> *v = static_cast<spvar<double>*>(var);
-        cxt.result().assign(v->val);
-        return;
+        return (sp_number_t)v->val;
     }
-    case SP_STRING:
-        cxt.result().assign(var->as_string());
-        return;
     case SP_BOOL:
     {
         spvar<bool> *v = static_cast<spvar<bool>*>(var);
-        cxt.result().assign(v->val ? 1. : 0.);
-        return;
+        return (sp_number_t)(v->val ? 1. : 0.);
     }
-    case SP_MATRIX_T:
-    {
-        cxt.result().empty_vector();
 
-        matrix_t<double> vec;
-        spbase::_setv(varstr, vec);
 
-        cxt.result().vec()->reserve(vec.nrows());
-        for (int i = 0; i < vec.nrows(); i++)
-        {
-            cxt.result().vec()->push_back(lk::vardata_t());
-            cxt.result().vec()->at(i).empty_vector();
-
-            for (int j = 0; j < vec.ncols(); j++)
-            {
-                cxt.result().vec()->at(i).vec_append(vec.at(i, j));
-            }
-        }
-
-        return;
-    }
-    case SP_DVEC_POINT:
-    {
-        std::vector< std::vector< sp_point > > Vp;
-        spbase::_setv(varstr, Vp);
-
-        cxt.result().empty_vector();
-        cxt.result().vec()->reserve(Vp.size());
-        int ni = Vp.size();
-
-        for (int i = 0; i < ni; i++)
-        {
-            for (int j = 0; j < Vp.at(i).size(); i++)
-            {
-                cxt.result().vec()->push_back(lk::vardata_t());
-                cxt.result().vec()->at(i*ni + j).vec_append((double)j);
-                cxt.result().vec()->at(i*ni + j).vec_append(Vp.at(i).at(j).x);
-                cxt.result().vec()->at(i*ni + j).vec_append(Vp.at(i).at(j).y);
-                cxt.result().vec()->at(i*ni + j).vec_append(Vp.at(i).at(j).z);
-            }
-        }
-
-        return;
-    }
-    case SP_VEC_DOUBLE:
-    case SP_VEC_INTEGER:
-    {
-        std::vector<double> Vd;
-        spbase::_setv(varstr, Vd);
-        cxt.result().empty_vector();
-        cxt.result().vec()->reserve(Vd.size());
-
-        for (int i = 0; i < Vd.size(); i++)
-            cxt.result().vec_append(Vd.at(i));
-
-        return;
-    }
-    case SP_WEATHERDATA:
-    case SP_VOIDPTR:
+    
     default:
         break;
     }
 
+}
 
+
+/** Returns the value of a @a SP_STRING variable with the given name. */
+SPEXPORT const char *ssc_data_get_string(sp_data_t p_data, const char *name)
+{
+    api_helper *mc = static_cast<api_helper*>(p_data);
+
+    if (mc->variables._varptrs.find(name) != mc->variables._varptrs.end())
+        throw std::invalid_argument("No such variable: " + std::string(name));
+
+    //make sure the data type of the variable provided matches the internal data type
+    int dattype = mc->variables._varptrs.at(name)->dattype;
+    if (dattype != SP_DATTYPE::SP_DOUBLE || dattype != SP_DATTYPE::SP_INT)
+        throw std::runtime_error("Data type of " + std::string(name) + " is not compatible with sp_set_matrix. " + __FILE__ + ":" + my_to_string(__LINE__));
+
+
+    return mc->variables._varptrs[name]->as_string().c_str();
+}
+
+
+/** Returns the value of a @a SSC_ARRAY variable with the given name. */
+SPEXPORT void sp_get_array(sp_data_t p_data, const char *name, sp_number_t* values, int *length)
+{
+    /*
+    Populates 'value_array' with 'length' entries
+    */
+
+    api_helper *mc = static_cast<api_helper*>(p_data);
+
+    if (mc->variables._varptrs.find(name) != mc->variables._varptrs.end())
+        throw std::invalid_argument("No such variable: " + std::string(name));
+
+    //make sure the data type of the variable provided matches the internal data type
+    int dattype = mc->variables._varptrs.at(name)->dattype;
+    if (dattype != SP_DATTYPE::SP_VEC_DOUBLE || dattype != SP_DATTYPE::SP_VEC_INTEGER)
+        throw std::runtime_error("Data type of " + std::string(name) + " is not compatible with sp_get_array. " + __FILE__ + ":" + my_to_string(__LINE__));
+
+    spbase *var = mc->variables._varptrs[name];
+    std::string varstr = var->as_string();
+
+    //convert the string formatted vector to a vector<double>
+    std::vector<double> Vd;
+    spbase::_setv(varstr, Vd);
+
+    //allocate space at the value_array pointer
+    values = new sp_number_t[(int)Vd.size()];
+    //set length for return
+    *length = (int)Vd.size();
+
+    //convert to to return format
+    for (size_t i = 0; i < *length; i++)
+        values[i] = Vd.at(i);
 
 }
 
 
+SPEXPORT void sp_get_matrix(sp_data_t p_data, const char *name, sp_number_t* values, int *ncols, int *nrows)
+{
+    /*
+    Populates 'value_array' with 'length' entries
+    */
+
+    api_helper *mc = static_cast<api_helper*>(p_data);
+
+    if (mc->variables._varptrs.find(name) != mc->variables._varptrs.end())
+        throw std::invalid_argument("No such variable: " + std::string(name));
+
+    //make sure the data type of the variable provided matches the internal data type
+    int dattype = mc->variables._varptrs.at(name)->dattype;
+    if (dattype != SP_DATTYPE::SP_MATRIX_T)
+        throw std::runtime_error("Data type of " + std::string(name) + " is not compatible with sp_get_matrix. " + __FILE__ + ":" + my_to_string(__LINE__));
+
+    spbase *var = mc->variables._varptrs[name];
+    std::string varstr = var->as_string();
+
+    //convert the string formatted vector 
+    matrix_t<double> Md;
+    spbase::_setv(varstr, Md);
+
+    //allocate space at the value_array pointer
+    values = new sp_number_t[(int)(Md.nrows()*Md.ncols())];
+    //set lengths for return
+    *ncols = Md.ncols();
+    *nrows = Md.nrows();
+
+    //convert to to return format
+    for (size_t i = 0; i < *nrows; i++)
+        for (size_t j = 0; j < *ncols; i++)
+        values[j + (*ncols)*i] = Md.at(i,j);
+
+}
+
+
+//case SP_DVEC_POINT:
+//{
+//    std::vector< std::vector< sp_point > > Vp;
+//    spbase::_setv(varstr, Vp);
+//
+//    cxt.result().empty_vector();
+//    cxt.result().vec()->reserve(Vp.size());
+//    int ni = Vp.size();
+//
+//    for (int i = 0; i < ni; i++)
+//    {
+//        for (int j = 0; j < Vp.at(i).size(); i++)
+//        {
+//            cxt.result().vec()->push_back(lk::vardata_t());
+//            cxt.result().vec()->at(i*ni + j).vec_append((double)j);
+//            cxt.result().vec()->at(i*ni + j).vec_append(Vp.at(i).at(j).x);
+//            cxt.result().vec()->at(i*ni + j).vec_append(Vp.at(i).at(j).y);
+//            cxt.result().vec()->at(i*ni + j).vec_append(Vp.at(i).at(j).z);
+//        }
+//    }
+//
+//    return;
+//}
 
 
 SPEXPORT void sp_reset_geometry(sp_data_t p_data)
@@ -195,8 +331,7 @@ SPEXPORT void sp_add_receiver(sp_data_t p_data)
 	Returns: (string:name[, boolean:make selection]):integer
     */
 
-    SPFrame &F = SPFrame::Instance();
-    var_map *V = F.GetSolarFieldObject()->getVarMap();
+    api_helper *mc = static_cast<api_helper*>(p_data);
 
 
     string tname = cxt.arg(0).as_string();
@@ -239,9 +374,7 @@ SPEXPORT void sp_drop_receiver(sp_data_t p_data)
 	Returns: (integer:index)
     */
 
-    SPFrame &F = SPFrame::Instance();
-    SolarField *SF = F.GetSolarFieldObject();
-    var_map *V = SF->getVarMap();
+    api_helper *mc = static_cast<api_helper*>(p_data);
 
     std::string tname = lower_case(cxt.arg(0).as_string().ToStdString());
 
@@ -270,8 +403,7 @@ SPEXPORT void sp_add_heliostat_template(sp_data_t p_data)
     */
 
     //Add a heliostat
-    SPFrame &F = SPFrame::Instance();
-    var_map *V = F.GetSolarFieldObject()->getVarMap();
+    api_helper *mc = static_cast<api_helper*>(p_data);
 
     string tname = cxt.arg(0).as_string();
     bool dupe = false;
@@ -303,9 +435,7 @@ SPEXPORT void sp_drop_heliostat_template(sp_data_t p_data)
 	Returns: (string:template name):bool
     */
 
-    SPFrame &F = SPFrame::Instance();
-    SolarField *SF = F.GetSolarFieldObject();
-    var_map *V = SF->getVarMap();
+    api_helper *mc = static_cast<api_helper*>(p_data);
 
     std::string tname = lower_case(cxt.arg(0).as_string().ToStdString());
 
@@ -329,8 +459,8 @@ SPEXPORT void sp_update_geometry(sp_data_t p_data)
 {
     /*	Refresh the solar field, receiver, or ambient condition settings based on the current parameter settings.	Returns: (void):boolean    */
 
-    SPFrame &F = SPFrame::Instance();
-    SolarField *SF = F.GetSolarFieldObject();
+    api_helper *mc = static_cast<api_helper*>(p_data);
+    
     if (SF->getHeliostats()->size() == 0)
     {
         //no layout exists, so we should be calling the 'run_layout' method instead
@@ -409,9 +539,7 @@ SPEXPORT void sp_generate_layout(sp_data_t p_data)
     Returns: boolean
     */
 
-    SPFrame &F = SPFrame::Instance();
-    SolarField *SF = F.GetSolarFieldObject();
-    var_map *V = SF->getVarMap();
+    api_helper *mc = static_cast<api_helper*>(p_data);
 
 
     if (cxt.arg_count() > 0)
@@ -512,9 +640,7 @@ SPEXPORT void sp_simulate(sp_data_t p_data)
     */
 
 
-    SPFrame &F = SPFrame::Instance();
-    SolarField *SF = F.GetSolarFieldObject();
-    var_map *V = SF->getVarMap();
+    api_helper *mc = static_cast<api_helper*>(p_data);
 
     if (cxt.arg_count() > 0)
     {
@@ -587,7 +713,7 @@ SPEXPORT void sp_summary_results(sp_data_t p_data)
 	Returns: (void):array
     */
     
-    SPFrame &F = SPFrame::Instance();
+    api_helper *mc = static_cast<api_helper*>(p_data);
 
     grid_emulator table;
     sim_results *results = F.GetResultsObject();
@@ -698,8 +824,7 @@ SPEXPORT void sp_detail_results(sp_data_t p_data)
         "([array:selected heliostat indices]):array");
     */
 
-    SPFrame &F = SPFrame::Instance();
-    SolarField *SF = F.GetSolarFieldObject();
+    api_helper *mc = static_cast<api_helper*>(p_data);
 
 
     if (SF->getHeliostats()->size() > 0)
@@ -796,8 +921,7 @@ SPEXPORT void sp_get_fluxmap(sp_data_t p_data)
 	Returns: ([integer:receiver id]):array
     */
 
-    SPFrame &F = SPFrame::Instance();
-    SolarField *SF = F.GetSolarFieldObject();
+    api_helper *mc = static_cast<api_helper*>(p_data);
 
     Receiver *rec;
 
@@ -848,9 +972,7 @@ SPEXPORT void sp_optimize(sp_data_t p_data)
     Returns: table
     */
 
-    SPFrame &F = SPFrame::Instance();
-    SolarField *SF = F.GetSolarFieldObject();
-    var_map *V = SF->getVarMap();
+    api_helper *mc = static_cast<api_helper*>(p_data);
 
     //get the variable table
     if (cxt.arg_count() < 1 || cxt.arg(0).type() != lk::vardata_t::VECTOR)
@@ -1148,8 +1270,7 @@ SPEXPORT void sp_heliostats_by_region(sp_data_t p_data)
     Returns an array of included heliostat ID's or locations. : array
     */
 
-    SPFrame &F = SPFrame::Instance();
-    SolarField *SF = F.GetSolarFieldObject();
+    api_helper *mc = static_cast<api_helper*>(p_data);
 
     Hvector *helios = SF->getHeliostats();
 
@@ -1462,8 +1583,8 @@ SPEXPORT void sp_modify_heliostats(sp_data_t p_data)
     Returns: none
     */
 
-    SPFrame &F = SPFrame::Instance();
-    SolarField *SF = F.GetSolarFieldObject();
+    api_helper *mc = static_cast<api_helper*>(p_data);
+    
     if (SF->getHeliostats()->size() < 1)
         return;
 
@@ -1613,9 +1734,7 @@ SPEXPORT void sp_save_from_script(sp_data_t p_data)
 	Returns: (string:path):boolean
     */
 
-    SPFrame &F = SPFrame::Instance();
-    SolarField *SF = F.GetSolarFieldObject();
-    var_map *V = SF->getVarMap();
+    api_helper *mc = static_cast<api_helper*>(p_data);
 
     std::string fname = cxt.arg(0).as_string();
     if (!ioutil::dir_exists(ioutil::path_only(fname).c_str()))
@@ -1651,7 +1770,7 @@ SPEXPORT void sp_open_from_script(sp_data_t p_data)
         return;
     }
 
-    SPFrame &F = SPFrame::Instance();
+    api_helper *mc = static_cast<api_helper*>(p_data);
 
     try
     {
