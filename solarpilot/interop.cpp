@@ -52,12 +52,14 @@
 #include <sstream>
 #include <iomanip>
 #include <math.h>
+#include <thread>
 
 #include "interop.h"
 #include "SolarField.h"
 #include "STObject.h"
 #include "solpos00.h"
 #include "sort_method.h"
+#include "LayoutSimulateThread.h"
 
 using namespace std;
 
@@ -104,6 +106,14 @@ par_variable::par_variable()
 }
 //-------------------
 
+//------------------- SimControl -------------------
+void SimControl::SetThreadCount( int nthread)
+{
+	_n_threads = max(min(int(std::thread::hardware_concurrency()), nthread), 1);
+}
+//--------------------
+
+//interop namespace
 
 void interop::GenerateSimulationWeatherData(var_map &V, int design_method, ArrayString &wf_entries){
 	/* 
@@ -719,6 +729,341 @@ void interop::UpdateMapLayoutData(var_map &V, Hvector *heliostats){
 	}
 
 }
+
+bool interop::HermiteFluxSimulationHandler(sim_results& results, SolarField& SF, Hvector& helios)
+{
+	/*
+	Call the hermite flux evaluation algorithm and process.
+	*/
+	SF.HermiteFluxSimulation(helios,
+		SF.getVarMap()->flux.aim_method.mapval() == var_fluxsim::AIM_METHOD::IMAGE_SIZE_PRIORITY    //to not re-simulate, aim strategy must be "IMAGE_SIZE"...
+		&& helios.size() == SF.getHeliostats()->size());                                        //and all heliostats must be included.
+
+	//Process the results
+	double azzen[2];
+	azzen[0] = D2R * SF.getVarMap()->flux.flux_solar_az.Val();
+	azzen[1] = D2R * (90. - SF.getVarMap()->flux.flux_solar_el.Val());
+
+	sim_params P;
+	P.dni = SF.getVarMap()->flux.flux_dni.val;
+
+	results.back().process_analytical_simulation(SF, P, 2, azzen, &helios);
+
+	//if we have more than 1 receiver, create performance summaries for each and append to the results vector
+	if (SF.getActiveReceiverCount() > 1)
+	{
+		//which heliostats are aiming at which receiver?
+		unordered_map<Receiver*, Hvector> aim_map;
+		for (Hvector::iterator h = helios.begin(); h != helios.end(); h++)
+			aim_map[(*h)->getWhichReceiver()].push_back(*h);
+
+		for (Rvector::iterator rec = SF.getReceivers()->begin(); rec != SF.getReceivers()->end(); rec++)
+		{
+			results.push_back(sim_result());
+			Rvector recs = { *rec };
+			results.back().process_analytical_simulation(SF, P, 2, azzen, &aim_map[*rec], &recs);
+		}
+	}
+
+	return true;
+}
+
+bool interop::DoManagedLayout(SimControl& SimC, SolarField& SF, var_map& V, LayoutSimThread* simthread)
+{
+	/*
+	This method is called to create a field layout. The method automatically handles
+	multithreading of hourly simulations.
+
+	Call
+	SF.Create()
+	before passing the solar field to this method.
+
+	*/
+
+	//Make sure the solar field has been created
+	if (SF.getVarMap() == 0)
+	{
+		// TODO: PopMessage("The solar field Create() method must be called before generating the field layout.", "Error");
+		return false;
+	}
+
+	//Is it possible to run a multithreaded simulation?
+	int nsim_req = SF.calcNumRequiredSimulations();
+	if (SimC._n_threads > 1 && nsim_req > 1)
+	{
+		//More than 1 thread and more than 1 simulation to run
+
+		//Prepare the master solar field object for layout simulation
+		WeatherData wdata;
+		bool full_sim = SF.PrepareFieldLayout(SF, &wdata);
+
+		//If full simulation is required...
+		if (full_sim)
+		{
+
+			int nthreads = min(nsim_req, SimC._n_threads);
+
+			//Duplicate SF objects in memory
+
+			/* //TODO:
+			wxString msg;
+			msg.Printf("Preparing %d threads for simulation", SimC._n_threads);
+			_layout_log->AppendText(msg);
+			*/
+			SolarField** SFarr;
+			SFarr = new SolarField * [nthreads];
+			for (int i = 0; i < nthreads; i++)
+			{
+				SFarr[i] = new SolarField(SF);
+			}
+
+			//Create sufficient results arrays in memory
+			sim_results results;
+			results.resize(nsim_req);
+
+			//Calculate the number of simulations per thread
+			int npert = (int)ceil((float)nsim_req / (float)nthreads);
+
+			//Create thread objects
+			simthread = new LayoutSimThread[nthreads];
+			SimC._n_threads_active = nthreads;    //Keep track of how many threads are active
+			SimC._is_mt_simulation = true;
+
+			int
+				sim_first = 0,
+				sim_last = npert;
+			for (int i = 0; i < nthreads; i++)
+			{
+				std::string si = my_to_string(i + 1);
+				simthread[i].Setup(si, SFarr[i], &results, &wdata, sim_first, sim_last, false, false);
+				sim_first = sim_last;
+				sim_last = min(sim_last + npert, nsim_req);
+			}
+			/* //TODO
+			msg.Printf("\n%d ms | Simulating %d design hours", _sim_watch.Time(), nsim_req);
+			_layout_log->AppendText(msg);
+			*/
+
+			//Run
+			for (int i = 0; i < nthreads; i++)
+				thread(&LayoutSimThread::StartThread, std::ref(simthread[i])).detach();
+
+
+			//Wait loop
+			while (true)
+			{
+				int nsim_done = 0, nsim_remain = 0, nthread_done = 0;
+				for (int i = 0; i < nthreads; i++)
+				{
+					if (simthread[i].IsFinished())
+						nthread_done++;
+
+					int ns, nr;
+					simthread[i].GetStatus(&ns, &nr);
+					nsim_done += ns;
+					nsim_remain += nr;
+
+
+				}
+				//TODO:  SimProgressUpdateMT(nsim_done, nsim_req); // uses wx
+				if (nthread_done == nthreads) break;
+				std::this_thread::sleep_for(std::chrono::milliseconds(75));
+
+			}
+
+			//Check to see whether the simulation was cancelled
+			bool cancelled = false;
+			for (int i = 0; i < nthreads; i++)
+			{
+				cancelled = cancelled || simthread[i].IsSimulationCancelled();
+			}
+
+			//check to see whether simulation errored out
+			bool errored_out = false;
+			for (int i = 0; i < SimC._n_threads; i++)
+			{
+				errored_out = errored_out || simthread[i].IsFinishedWithErrors();
+			}
+			if (errored_out)
+			{
+				//make sure each thread is cancelled
+				for (int i = 0; i < SimC._n_threads; i++)
+					simthread[i].CancelSimulation();
+
+				//Get the error messages, if any
+				string errmsgs;
+				for (int i = 0; i < SimC._n_threads; i++)
+				{
+					for (int j = 0; j < (int)simthread[i].GetSimMessages()->size(); j++)
+						errmsgs.append(simthread[i].GetSimMessages()->at(j) + "\n");
+				}
+				//Display error messages
+				//if (!errmsgs.empty())
+					//TODO: PopMessage(errmsgs, "SolarPILOT Simulation Error", wxOK | wxICON_ERROR);
+
+			}
+
+			//Clean up dynamic memory
+			for (int i = 0; i < nthreads; i++)
+			{
+				delete SFarr[i];
+			}
+			delete[] SFarr;
+			delete[] simthread;
+			simthread = 0;
+
+			//If the simulation was cancelled per the check above, exit out
+			if (cancelled || errored_out)
+			{
+				return false;
+			}
+
+			//For the map-to-annual case, run a simulation here
+			if (V.sf.des_sim_detail.mapval() == var_solarfield::DES_SIM_DETAIL::EFFICIENCY_MAP__ANNUAL)
+				SolarField::AnnualEfficiencySimulation(V.amb.weather_file.val, &SF, results);
+
+			//Process the results
+			SF.ProcessLayoutResults(&results, nsim_req);
+
+		}
+	}
+	else
+	{
+		SimC._n_threads_active = 1;
+		SimC._is_mt_simulation = false;
+		bool simok = SF.FieldLayout();
+		if (SF.ErrCheck() || !simok) return false;
+	}
+
+	//follow-on stuff
+	Vect sun = Ambient::calcSunVectorFromAzZen(SF.getVarMap()->sf.sun_az_des.Val() * D2R, (90. - SF.getVarMap()->sf.sun_el_des.Val()) * D2R);
+	SF.calcHeliostatShadows(sun);    if (SF.ErrCheck()) return false;
+	V.land.bound_area.Setval(SF.getLandObject()->getLandBoundArea());
+
+	return true;
+
+}
+
+void interop::CreateResultsTable(sim_result& result, grid_emulator_base& table)
+{
+	try
+	{
+		//table.CreateGrid(result.is_soltrace ? 18 : 19, 6);
+		table.CreateGrid(18, 6);
+
+		table.SetColLabelValue(0, "Units");
+		table.SetColLabelValue(1, "Value");
+		table.SetColLabelValue(2, "Mean");
+		table.SetColLabelValue(3, "Minimum");
+		table.SetColLabelValue(4, "Maximum");
+		table.SetColLabelValue(5, "Std. dev");
+
+		int id = 0;
+		table.AddRow(id++, "Total plant cost", "$", result.total_installed_cost, 0);
+		//table.AddRow(id++, "Cost/Energy metric", "-", result.coe_metric);
+		table.AddRow(id++, "Simulated heliostat area", "m^2", result.total_heliostat_area);
+		table.AddRow(id++, "Simulated heliostat count", "-", result.num_heliostats_used, 0);
+		table.AddRow(id++, "Power incident on field", "kW", result.power_on_field);
+		table.AddRow(id++, "Power absorbed by the receiver", "kW", result.power_absorbed);
+		table.AddRow(id++, "Power absorbed by HTF", "kW", result.power_to_htf);
+
+		double nan = std::numeric_limits<double>::quiet_NaN();
+		//------------------------------------
+		if (result.is_soltrace)
+		{
+			table.AddRow(id++, "Cloudiness efficiency", "%", 100. * result.eff_cloud.wtmean, 2);
+			table.AddRow(id++, "Shadowing and Cosine efficiency", "%", 100. * result.eff_cosine.wtmean, 2);
+			table.AddRow(id++, "Reflection efficiency", "%", 100. * result.eff_reflect.wtmean, 2);
+			table.AddRow(id++, "Blocking efficiency", "%", 100. * result.eff_blocking.wtmean, 2);
+			table.AddRow(id++, "Image intercept efficiency", "%", 100. * result.eff_intercept.wtmean, 2);
+			table.AddRow(id++, "Absorption efficiency", "%", 100. * result.eff_absorption.wtmean, 2);
+			table.AddRow(id++, "Solar field optical efficiency", "%", 100. * result.eff_total_sf.wtmean / result.eff_absorption.wtmean, 2);
+			table.AddRow(id++, "Optical efficiency incl. receiver", "%", 100. * result.eff_total_sf.wtmean, 2);
+			table.AddRow(id++, "Incident flux", "kW/m2", result.flux_density.ave, -1, result.flux_density.min, result.flux_density.max, result.flux_density.stdev);
+			table.AddRow(id++, "No. rays traced", "-", result.num_ray_traced, 0);
+			table.AddRow(id++, "No. heliostat ray intersections", "-", result.num_ray_heliostat, 0);
+			table.AddRow(id++, "No. receiver ray intersections", "-", result.num_ray_receiver, 0);
+		}
+		else
+		{   //results table for hermite simulation
+			table.AddRow(id++, "Cloudiness efficiency", "%",
+				100. * result.eff_cloud.wtmean, 2,
+				100. * result.eff_cloud.ave,
+				100. * result.eff_cloud.min,
+				100. * result.eff_cloud.max,
+				100. * result.eff_cloud.stdev);
+			table.AddRow(id++, "Shading efficiency", "%",
+				100. * result.eff_shading.wtmean, 2,
+				100. * result.eff_shading.ave,
+				100. * result.eff_shading.min,
+				100. * result.eff_shading.max,
+				100. * result.eff_shading.stdev);
+			table.AddRow(id++, "Cosine efficiency", "%",
+				100. * result.eff_cosine.wtmean, 2,
+				100. * result.eff_cosine.ave,
+				100. * result.eff_cosine.min,
+				100. * result.eff_cosine.max,
+				100. * result.eff_cosine.stdev);
+			table.AddRow(id++, "Reflection efficiency", "%",
+				100. * result.eff_reflect.wtmean, 2,
+				100. * result.eff_reflect.ave,
+				100. * result.eff_reflect.min,
+				100. * result.eff_reflect.max,
+				100. * result.eff_reflect.stdev);
+			table.AddRow(id++, "Blocking efficiency", "%",
+				100. * result.eff_blocking.wtmean, 2,
+				100. * result.eff_blocking.ave,
+				100. * result.eff_blocking.min,
+				100. * result.eff_blocking.max,
+				100. * result.eff_blocking.stdev);
+			table.AddRow(id++, "Attenuation efficiency", "%",
+				100. * result.eff_attenuation.wtmean, 2,
+				100. * result.eff_attenuation.ave,
+				100. * result.eff_attenuation.min,
+				100. * result.eff_attenuation.max,
+				100. * result.eff_attenuation.stdev);
+			table.AddRow(id++, "Image intercept efficiency", "%",
+				100. * result.eff_intercept.wtmean, 2,
+				100. * result.eff_intercept.ave,
+				100. * result.eff_intercept.min,
+				100. * result.eff_intercept.max,
+				100. * result.eff_intercept.stdev);
+			table.AddRow(id++, "Absorption efficiency", "%", 100. * result.eff_absorption.wtmean, 2);
+			table.AddRow(id++, "Solar field optical efficiency", "%",
+				100. * result.eff_total_sf.wtmean / result.eff_absorption.wtmean, 2,
+				nan,
+				100. * result.eff_total_sf.min / result.eff_absorption.wtmean,
+				100. * result.eff_total_sf.max / result.eff_absorption.wtmean,
+				100. * result.eff_total_sf.stdev / result.eff_absorption.wtmean);
+			table.AddRow(id++, "Optical efficiency incl. receiver", "%",
+				100. * result.eff_total_sf.wtmean, 2,
+				nan,
+				100. * result.eff_total_sf.min,
+				100. * result.eff_total_sf.max,
+				100. * result.eff_total_sf.stdev);
+			table.AddRow(id++, "Annualized heliostat efficiency", "%",
+				100. * result.eff_annual.wtmean, 2,
+				nan,
+				100. * result.eff_annual.min,
+				100. * result.eff_annual.max,
+				100. * result.eff_annual.stdev);
+			table.AddRow(id++, "Incident flux", "kW/m2",
+				result.flux_density.ave, -1,
+				nan,
+				result.flux_density.min,
+				result.flux_density.max,
+				result.flux_density.stdev);
+		}
+	}
+	catch (...)
+	{
+		throw spexception("An error occurred while trying to process the simulation results for display.");
+	}
+
+}
+
+
+
 
 //-----
 
@@ -1460,4 +1805,125 @@ void simulation_table::getKeys(ArrayString &keys){
 	for(unordered_map<string, ArrayString>::iterator it = data.begin(); it != data.end(); it++)
 		keys.push_back(it->first);
 	
+}
+
+
+void grid_emulator_base::CreateGrid(int nrow, int ncol)
+{
+	_nrow = nrow;
+	_ncol = ncol;
+	data.clear();
+	data.resize(nrow);
+	for (int i = 0; i < nrow; i++)
+		data.at(i).resize(ncol);
+	rowlabs.resize(nrow);
+	collabs.resize(ncol);
+}
+
+bool grid_emulator_base::SetColLabelValue(int col, std::string value)
+{
+	collabs.at(col) = value;
+	return true;
+}
+
+bool grid_emulator_base::SetRowLabelValue(int row, std::string value)
+{
+	rowlabs.at(row) = value;
+	return true;
+}
+
+bool grid_emulator_base::SetCellValue(int row, int col, std::string value)
+{
+	data.at(row).at(col) = value;
+	return true;
+}
+
+bool grid_emulator_base::SetCellValue(std::string value, int row, int col)
+{
+	return SetCellValue(row, col, value);
+}
+
+std::vector<std::string> grid_emulator_base::GetPrintableTable(std::string eol)
+{
+	std::vector<std::string> printable(_nrow + 1, "");
+
+	std::string hdr;
+	for (int i = 0; i < _ncol; i++)
+		hdr.append(", " + collabs.at(i));
+	printable[0] = hdr;
+
+	for (int i = 0; i < _nrow; i++)
+	{
+		std::string line = rowlabs.at(i);
+
+		for (int j = 0; j < _ncol; j++)
+		{
+			std::string tval = GetCellValue(i, j);
+
+			tval.erase(std::remove(tval.begin(), tval.end(), ","), tval.end());
+			line.append(", " + tval); //Remove any commas from cell values - the file is comma-delimited
+		}
+		printable[i + 1] = line.append(eol);
+
+	}
+	return printable;
+}
+
+
+
+void grid_emulator_base::AddRow(int row, std::string label, std::string units, double value, int sigfigs, double mean, double min, double max, double stdev)
+{
+	//Row adding method for simple performance runs
+
+	if ((GetNumberCols() < 6) || (GetNumberRows() < row + 1))
+		throw spexception("Sorry! Results table incorrectly formatted. Please contact solarpilot.support@nrel.gov for help.");
+
+	bool is_currency = false;
+	if (units.find("$") != std::string::npos) is_currency = true;
+
+	//calculate a good precision
+	if (sigfigs < 0)
+	{
+		int prec = 4 - (int)log10f(value);
+		sigfigs = prec < 0 ? 0 : prec;
+	}
+
+	char cline[300];
+	sprintf(cline, "%s.%df", "%", sigfigs);
+	std::string infmt(cline);
+	sprintf(cline, "%s.%df", "%", sigfigs + 2);
+	std::string stfmt(cline);
+	//wxString infmt = wxString::Format("%s.%df", "%", sigfigs);
+	//wxString stfmt = wxString::Format("%s.%df", "%", sigfigs+2);
+
+	SetRowLabelValue(row, label);
+	SetCellValue(row, 0, units);
+	//SetCellValue(row, 1, is_currency ? gui_util::FormatAsCurrency(value) : to_string(value, infmt.c_str()));
+	SetCellValue(row, 1, to_string(value, infmt.c_str()));
+	SetCellValue(row, 2, (mean == mean ? to_string(mean, infmt.c_str()) : ""));
+	SetCellValue(row, 3, (min == min ? to_string(min, infmt.c_str()) : ""));
+	SetCellValue(row, 4, (max == max ? to_string(max, infmt.c_str()) : ""));
+	SetCellValue(row, 5, (stdev == stdev ? to_string(stdev, stfmt.c_str()) : ""));
+
+}
+
+int grid_emulator_base::GetNumberRows()
+{
+	return _nrow;
+}
+int grid_emulator_base::GetNumberCols()
+{
+	return _ncol;
+}
+std::string grid_emulator_base::GetRowLabelValue(int row)
+{
+	return rowlabs.at(row);
+}
+std::string grid_emulator_base::GetColLabelValue(int col)
+{
+	return collabs.at(col);
+}
+std::string grid_emulator_base::GetCellValue(int row, int col)
+{
+	return data.at(row).at(col);
 }

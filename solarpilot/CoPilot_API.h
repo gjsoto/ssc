@@ -1,9 +1,13 @@
 #ifndef _COPILOT_API_
 #define _COPILOT_API_
 
+
+
 #include <unordered_map>
 #include <string>
+#include <ctime>
 #include "SolarField.h"
+//#include "interop.h"
 
 #if defined(_WINDLL)
 #define SPEXPORT __declspec(dllexport)
@@ -56,3 +60,5 @@ extern "C" {
 
 
 #endif  // _COPILOT_API_
+
+SPEXPORT int sp_update_geometry(sp_data_t p_data);

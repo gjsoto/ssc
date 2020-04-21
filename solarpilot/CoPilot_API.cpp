@@ -1,20 +1,37 @@
+#include <fstream>
+#include "rapidxml.hpp"
+
 #include "CoPilot_API.h"
+#include "IOUtil.h"
+#include "shared/lib_weatherfile.h"
+
 
 static void EditorOutput(const char *msg)
 {
     //SPFrame::Instance().ScriptMessageOutput(msg);
 }
 
+//static void APICallback(simulation_info* s, void* data)
+//{
+//
+//    python_callback(void*, sp_data_t*, ...)
+//}
 
 struct api_helper
 {
     SolarField solarfield;
     var_map variables;
+    sim_results results;
+    LayoutSimThread* simthread;
+    SimControl sim_control;
 
     api_helper()
     {
         variables.reset();
         solarfield.Create(variables);
+        results.clear();
+        simthread = 0;
+        //solarfield.getSimInfoObject()->setCallbackFunction()
     };
 };
 
@@ -287,32 +304,6 @@ SPEXPORT void sp_get_matrix(sp_data_t p_data, const char *name, sp_number_t* val
 
 }
 
-
-//case SP_DVEC_POINT:
-//{
-//    std::vector< std::vector< sp_point > > Vp;
-//    spbase::_setv(varstr, Vp);
-//
-//    cxt.result().empty_vector();
-//    cxt.result().vec()->reserve(Vp.size());
-//    int ni = Vp.size();
-//
-//    for (int i = 0; i < ni; i++)
-//    {
-//        for (int j = 0; j < Vp.at(i).size(); i++)
-//        {
-//            cxt.result().vec()->push_back(lk::vardata_t());
-//            cxt.result().vec()->at(i*ni + j).vec_append((double)j);
-//            cxt.result().vec()->at(i*ni + j).vec_append(Vp.at(i).at(j).x);
-//            cxt.result().vec()->at(i*ni + j).vec_append(Vp.at(i).at(j).y);
-//            cxt.result().vec()->at(i*ni + j).vec_append(Vp.at(i).at(j).z);
-//        }
-//    }
-//
-//    return;
-//}
-
-
 SPEXPORT void sp_reset_geometry(sp_data_t p_data)
 {
     /*
@@ -324,17 +315,18 @@ SPEXPORT void sp_reset_geometry(sp_data_t p_data)
     mc->variables.reset();
 }
 
-SPEXPORT void sp_add_receiver(sp_data_t p_data)
+SPEXPORT int sp_add_receiver(sp_data_t p_data, const char* receiver_name)
 {
     /*
 	Add a new receiver, returning the unique index
 	Returns: (string:name[, boolean:make selection]):integer
     */
 
-    api_helper *mc = static_cast<api_helper*>(p_data);
+    api_helper* mc = static_cast<api_helper*>(p_data);
 
+    std::string tname = std::string(receiver_name);
+    var_map* V = &mc->variables;
 
-    string tname = cxt.arg(0).as_string();
     // check to make sure this isn't a duplicate. Each item needs a unique name
     bool dupe = false;
     for (unsigned int i = 0; i < V->recs.size(); i++)
@@ -344,7 +336,7 @@ SPEXPORT void sp_add_receiver(sp_data_t p_data)
     }
     if (dupe)
     {
-        EditorOutput("Please enter a unique name for this geometry.");
+        throw std::runtime_error("Please enter a unique name for this geometry.");
         return;
     }
 
@@ -353,21 +345,23 @@ SPEXPORT void sp_add_receiver(sp_data_t p_data)
 
     V->add_receiver(ind);
     V->recs[ind].rec_name.val = tname;
-
+    
     //Re-create the solar field object
-    F.GetSolarFieldObject()->Create(*V);
-
-    F.UpdateReceiverUITemplates();
+    mc->solarfield.Create(*V);
+    
+    //F.UpdateReceiverUITemplates();   // TODO: Need to confirm no variables are changed.
 
     //update the input display
-    F.UpdateCalculatedGUIValues();
+        //F.UpdateCalculatedGUIValues();    // Updates clculated parameters
+    mc->solarfield.updateAllCalculatedParameters(*V);
 
-    cxt.result().assign((double)SPFrame::Instance().GetVariablesObject()->recs.back().id.val);
+    mc->solarfield.updateCalculatedReceiverPower(*V);  // (line 1783) unsure if this is necessary
 
-    return;
+    //cxt.result().assign((double)SPFrame::Instance().GetVariablesObject()->recs.back().id.val);
+    return V->recs.back().id.val; 
 }
 
-SPEXPORT void sp_drop_receiver(sp_data_t p_data)
+SPEXPORT int sp_drop_receiver(sp_data_t p_data, const char* receiver_name)
 {
     /*
 	Drop a receiver from the current solar field
@@ -375,8 +369,9 @@ SPEXPORT void sp_drop_receiver(sp_data_t p_data)
     */
 
     api_helper *mc = static_cast<api_helper*>(p_data);
+    var_map* V = &mc->variables;
 
-    std::string tname = lower_case(cxt.arg(0).as_string().ToStdString());
+    std::string tname = lower_case(std::string(receiver_name));
 
     for (size_t i = 0; i < V->hels.size(); i++)
     {
@@ -384,18 +379,17 @@ SPEXPORT void sp_drop_receiver(sp_data_t p_data)
         {
             //delete the item
             V->drop_receiver(V->recs.at(i).id.val);
-            SF->Create(*V);
-            cxt.result().assign(1.);
-            return;
+            mc->solarfield.Create(*V);
+            //cxt.result().assign(1.);
+            return 1.;
         }
     }
 
-    cxt.result().assign(0.);
-
-    return;
+    //cxt.result().assign(0.);
+    return 0.;
 }
 
-SPEXPORT void sp_add_heliostat_template(sp_data_t p_data)
+SPEXPORT int sp_add_heliostat_template(sp_data_t p_data, const char* heliostat_name)
 {
     /*
 	Add a new heliostat template that can be used in the layout.
@@ -404,8 +398,10 @@ SPEXPORT void sp_add_heliostat_template(sp_data_t p_data)
 
     //Add a heliostat
     api_helper *mc = static_cast<api_helper*>(p_data);
+    var_map* V = &mc->variables;
 
-    string tname = cxt.arg(0).as_string();
+    //string tname = cxt.arg(0).as_string();
+    std::string tname = std::string(heliostat_name);
     bool dupe = false;
     for (unsigned int i = 0; i < V->hels.size(); i++)
     {
@@ -414,7 +410,7 @@ SPEXPORT void sp_add_heliostat_template(sp_data_t p_data)
     }
     if (dupe)
     {
-        EditorOutput("Please enter a unique name for this heliostat template.");
+        throw std::runtime_error("Please enter a unique name for this heliostat template.");
         return;
     }
 
@@ -422,13 +418,14 @@ SPEXPORT void sp_add_heliostat_template(sp_data_t p_data)
     V->add_heliostat(ind);
     V->hels.back().helio_name.val = tname;
     //Re-create the solar field object
-    F.GetSolarFieldObject()->Create(*V);
+    mc->solarfield.Create(*V);
+    // F.GetSolarFieldObject()->Create(*V);
 
-    cxt.result().assign((double)SPFrame::Instance().GetVariablesObject()->hels.back().id.val);
-
+    //cxt.result().assign((double)SPFrame::Instance().GetVariablesObject()->hels.back().id.val);
+    return V->hels.back().id.val;
 }
 
-SPEXPORT void sp_drop_heliostat_template(sp_data_t p_data)
+SPEXPORT int sp_drop_heliostat_template(sp_data_t p_data, const char* heliostat_name)
 {
     /*
 	Delete (drop) the specified heliostat template from the current setup. Returns true if successful.
@@ -436,8 +433,9 @@ SPEXPORT void sp_drop_heliostat_template(sp_data_t p_data)
     */
 
     api_helper *mc = static_cast<api_helper*>(p_data);
+    var_map* V = &mc->variables;
 
-    std::string tname = lower_case(cxt.arg(0).as_string().ToStdString());
+    std::string tname = lower_case(std::string(heliostat_name));
 
     for (size_t i = 0; i < V->hels.size(); i++)
     {
@@ -445,37 +443,64 @@ SPEXPORT void sp_drop_heliostat_template(sp_data_t p_data)
         {
             //delete the item
             V->drop_heliostat(V->hels.at(i).id.val);
-            SF->Create(*V);
-            cxt.result().assign(1.);
-            return;
+            //SF->Create(*V);
+            mc->solarfield.Create(*V);
+            //cxt.result().assign(1.);
+            return 1.;
         }
     }
 
-    cxt.result().assign(0.);
-
+    //cxt.result().assign(0.);
+    return 0.;
 }
 
-SPEXPORT void sp_update_geometry(sp_data_t p_data)
+SPEXPORT int sp_update_geometry(sp_data_t p_data)
 {
     /*	Refresh the solar field, receiver, or ambient condition settings based on the current parameter settings.	Returns: (void):boolean    */
 
     api_helper *mc = static_cast<api_helper*>(p_data);
+    var_map* V = &mc->variables;
+    SolarField* SF = &mc->solarfield;
     
     if (SF->getHeliostats()->size() == 0)
     {
         //no layout exists, so we should be calling the 'run_layout' method instead
-        EditorOutput("No layout exists, so the 'update_geometry' function cannot be executed. Please first create or import a layout using 'run_layout'.");
-        cxt.result().assign(0.);
-        return;
+        std::runtime_error("No layout exists, so the 'update_geometry' function cannot be executed. Please first create or import a layout using 'run_layout'.");
+        //cxt.result().assign(0.);
+        return 0.;
     }
 
-    var_map *V = SF->getVarMap();
+    std::string weatherfile_str = std::string(V->amb.weather_file.val);
 
-    wxString weatherfile = V->amb.weather_file.val;
-    F.UpdateClimateFile(weatherfile, *V, true);
+    Ambient::readWeatherFile(*V);
+    
+    //Saving local verison of weather data
+    weatherfile wf;
+    if (!wf.open(weatherfile_str)) return; //error
+
+    //Update the weather data
+    std::string linef = "%d,%d,%d,%.2f,%.1f,%.1f,%.1f";
+    char cline[300];
+
+    int nrec = (int)wf.nrecords();
+
+    ArrayString local_wfdat;
+    local_wfdat.resize(nrec);
+
+    weather_record wrec;
+    for (int i = 0; i < nrec; i++)
+    {
+        //int year, month, day, hour;
+        wf.read(&wrec);
+        sprintf(cline, linef.c_str(), wrec.day, wrec.hour, wrec.month, wrec.dn, wrec.tdry, wrec.pres / 1000., wrec.wspd);
+        std::string line(cline);
+        local_wfdat.at(i) = line;
+    }
 
     //Update the design method box.. this actually updates both the map values and GUI. Probably should fix this sometime..
-    F.UpdateDesignSelect(V->sf.des_sim_detail.mapval(), *V);
+    //F.UpdateDesignSelect(V->sf.des_sim_detail.mapval(), *V);
+        // Function seems to only update var_map with simulation data through GenearateSimulationWeatherData()
+    interop::GenerateSimulationWeatherData(*V, V->sf.des_sim_detail.mapval(), local_wfdat);
 
     //Set up the solar field
     SF->Clean();
@@ -483,155 +508,167 @@ SPEXPORT void sp_update_geometry(sp_data_t p_data)
 
     try
     {
-        SolarField::PrepareFieldLayout(*SF, 0, true);
+        SolarField::PrepareFieldLayout(mc->solarfield, 0, true);
 
-        if (SF->ErrCheck())
+        if (mc->solarfield.ErrCheck())
         {
-            EditorOutput("An error occurred when preparing the updated field geometry in the call 'update_geometry'.");
-            cxt.result().assign(0.);
-            return;
+            std::runtime_error("An error occurred when preparing the updated field geometry in the call 'update_geometry'.");
+            //cxt.result().assign(0.);
+            return 0.;
         }
 
         SF->calcHeliostatArea();
         SF->updateAllCalculatedParameters(*V);
 
         double azzen[2];
-        SF->CalcDesignPtSunPosition(V->sf.sun_loc_des.mapval(), azzen[0], azzen[1]);
+        mc->solarfield.CalcDesignPtSunPosition(V->sf.sun_loc_des.mapval(), azzen[0], azzen[1]);
         Vect sun = Ambient::calcSunVectorFromAzZen(azzen[0] * D2R, azzen[1] * D2R);
 
         SF->updateAllTrackVectors(sun);
 
         if (SF->ErrCheck())
         {
-            EditorOutput("An error occurred when preparing the updated field geometry in the call 'update_geometry'.");
-            cxt.result().assign(0.);
-            return;
+            std::runtime_error("An error occurred when preparing the updated field geometry in the call 'update_geometry'.");
+            //cxt.result().assign(0.);
+            return 0.;
         }
     }
     catch (std::exception &e)
     {
-        EditorOutput("An error occurred when preparing the updated field geometry in the call 'update_geometry'. Error:\n");
-        EditorOutput(e.what());
-        cxt.result().assign(0.);
-        return;
+        std::runtime_error("An error occurred when preparing the updated field geometry in the call 'update_geometry'. Error:\n");
+        std::runtime_error(e.what());
+        //cxt.result().assign(0.);
+        return 0.;
     }
     catch (...)
     {
-        EditorOutput("Unknown error when executing 'update_geometry'.");
-        cxt.result().assign(0.);
-        return;
+        std::runtime_error("Unknown error when executing 'update_geometry'.");
+        //cxt.result().assign(0.);
+        return 0.;
     }
 
-    cxt.result().assign(1.);
-    return;
+    //cxt.result().assign(1.);
+    return 1.;
 }
 
-SPEXPORT void sp_generate_layout(sp_data_t p_data)
+SPEXPORT bool sp_assign_layout(sp_data_t p_data, sp_number_t *pvalues, int nrows, int ncols, int nthreads = 0) //, bool save_detail = true)
 {
+    /*
+    Run layout with specified positions. User specifies layout positions in the following format, where first 4 columns are required:
+        "<template (int)> <location X> <location Y> <location Z> <x focal length> <y focal length> <cant i> <cant j> <cant k> <aim X> <aim Y> <aim Z>" (array:positions)
+    Returns: boolean
+    */
+    api_helper* mc = static_cast<api_helper*>(p_data);
+    var_map* V = &mc->variables;
 
+    //assign layout positions
+    V->sf.layout_data.val.clear();
+
+    std::stringstream heliodata;
+
+    size_t npos = nrows;
+    for (size_t i = 0; i < npos; i++)
+    {
+        for (size_t j = 0; j < 12; j++)
+        {
+            if (j > ncols - 1)
+                heliodata << "NULL";
+            else
+                heliodata << pvalues[j + ncols * i];
+            heliodata << (j < 11 ? "," : ";");
+        }
+
+    }
+    V->sf.layout_data.val = heliodata.str();
+
+    //user specified layout
+    V->sf.layout_method.combo_select_by_mapval(var_solarfield::LAYOUT_METHOD::USERDEFINED);
+
+    //TODO: Will this work?
+    bool simok = sp_generate_layout(p_data, nthreads);
+
+    return simok;
+}
+
+
+SPEXPORT bool sp_generate_layout(sp_data_t p_data, int nthreads = 0) //, bool save_detail = true)
+{
     /*
     Create a solar field layout. Options include 'nthreads':integer (default All),'save_detail':boolean (default True)",
     run layout without specified positions SolarPILOT generates layout positions ([table:options])
     Returns: boolean
         
-    Run layout with specified positions. User specifies layout positions in the following format, where first 4 columns are required:
-        "<template (int)> <location X> <location Y> <location Z> <x focal length> <y focal length> <cant i> <cant j> <cant k> <aim X> <aim Y> <aim Z>" (array:positions)
-    Returns: boolean
     */
 
     api_helper *mc = static_cast<api_helper*>(p_data);
+    var_map* V = &mc->variables;
+    SolarField* SF = &mc->solarfield;
 
+    SimControl* SC = &mc->sim_control;
+    LayoutSimThread* SThread = mc->simthread;
 
-    if (cxt.arg_count() > 0)
-    {
-        lk::vardata_t *options = 0;
+    if (nthreads!=0)
+        SC->SetThreadCount(nthreads);    
 
+    Ambient* A = SF->getAmbientObject();
+    A->readWeatherFile(*V);
 
-        if (cxt.arg(0).type() == lk::vardata_t::VECTOR)
-        {
-            //user table
-            if (cxt.arg_count() > 1)
-                options = &cxt.arg(1);
+    //TODO:Is this needed?  I dont think so. It updates Design page in UI
+    //F.UpdateDesignSelect(V->sf.des_sim_detail.mapval(), *V);
 
-            //assign layout positions
-            V->sf.layout_data.val.clear();
-            size_t npos = cxt.arg(0).vec()->size();
-            for (size_t i = 0; i < npos; i++)
-            {
-                std::string helstr = "";
-                std::vector< lk::vardata_t > *hp = cxt.arg(0).vec()->at(i).vec();
-
-                for (size_t j = 0; j < hp->size(); j++)
-                    helstr += hp->at(j).as_string() + (j < hp->size() - 1 ? "," : "");
-
-                V->sf.layout_data.val += helstr + (i < npos - 1 ? ";" : "");
-            }
-
-            //user specified layout
-            V->sf.layout_method.combo_select_by_mapval(var_solarfield::LAYOUT_METHOD::USERDEFINED);
-        }
-        else
-            options = &cxt.arg(0);
-
-        if (options)
-            if (options->hash()->find("nthreads") != options->hash()->end())
-                F.SetThreadCount(options->hash()->at("nthreads")->as_integer());
-    }
-
-    wxString v = (wxString)V->amb.weather_file.val;
-    F.UpdateClimateFile(v, *V, true);
-    F.UpdateDesignSelect(V->sf.des_sim_detail.mapval(), *V);
     SF->Clean();
     SF->Create(*V);
-    bool ok = F.DoManagedLayout(*SF, *V);        //Returns TRUE if successful
+    
+    bool simok = interop::DoManagedLayout(*SC, *SF, *V, SThread);        //Returns TRUE if successful
 
-    cxt.result().assign(ok);
-
-    F.UpdateLayoutGrid();
-    F.GetFieldPlotObject()->SetPlotData(*SF, FIELD_PLOT::EFF_TOT);
-    F.GetFieldPlotObject()->Update();
-
-    return;
+    return simok;
 }
 
-SPEXPORT void sp_get_layout_info(sp_data_t p_data)
+SPEXPORT bool sp_get_layout_info(sp_data_t p_data, sp_number_t *layoutinfo, sp_number_t* nhelio, sp_number_t* ncol)
 {
     /*
     Get information regarding the heliostat field layout. Returns matrix with each row corresponding to a heliostat.
-        "Information includes: [index, position-x, position-y, position-z, template, ranking metric value]
+        "Information includes: [index, position-x, position-y, position-z, template_id, ranking metric value]
     Returns: (void):table
     */
+    api_helper* mc = static_cast<api_helper*>(p_data);
+    //var_map* V = &mc->variables;
 
+    SolarField* SF = &mc->solarfield;
+    Hvector* hels = SF->getHeliostats();
 
-    SolarField *SF = SPFrame::Instance().GetSolarFieldObject();
+    htemp_map htemps = *SF->getHeliostatTemplates();
 
-    Hvector *hels = SF->getHeliostats();
+    *nhelio = hels->size();
+    unsigned int ncol_i = 6;
+    *ncol = (sp_number_t)ncol_i;
 
-    lk::vardata_t &r = cxt.result();
-    r.empty_vector();
-    r.vec()->reserve(hels->size());
+    layoutinfo = new sp_number_t[(*nhelio) * (*ncol)];
+    //  TODO: Free memory somewhere -> look to see what SSC API does for this
 
-    for (int i = 0; i < (int)hels->size(); i++)
+    for (size_t i = 0; i < (int)hels->size(); i++)
     {
-        r.vec()->push_back(lk::vardata_t());
-        r.vec()->at(i).empty_vector();
+        sp_point* loc = hels->at(i)->getLocation();
 
-        r.vec()->at(i).vec_append(hels->at(i)->getId());
+        layoutinfo[i * ncol_i + 0] = hels->at(i)->getId();
+        layoutinfo[i * ncol_i + 1] = loc->x;
+        layoutinfo[i * ncol_i + 2] = loc->y;
+        layoutinfo[i * ncol_i + 3] = loc->z;
+        layoutinfo[i * ncol_i + 4] = hels->at(i)->getMasterTemplate()->getVarMap()->id.val;
+        layoutinfo[i * ncol_i + 5] = hels->at(i)->getRankingMetricValue();
 
-        sp_point *loc = hels->at(i)->getLocation();
-        r.vec()->at(i).vec_append(loc->x);
-        r.vec()->at(i).vec_append(loc->y);
-        r.vec()->at(i).vec_append(loc->z);
-
-        r.vec()->at(i).vec_append(*hels->at(i)->getMasterTemplate()->getHeliostatName());
-
-        r.vec()->at(i).vec_append(hels->at(i)->getRankingMetricValue());
     }
 
-    return;
+    return true;
 }
 
-SPEXPORT void sp_simulate(sp_data_t p_data)
+SPEXPORT void var_free_memory(sp_number_t* varptr)
+{
+    delete[] varptr;
+};
+
+SPEXPORT bool sp_simulate(sp_data_t p_data, int nthreads = 1, bool save_detail = true, bool update_aimpoints = true)
+//SPEXPORT void sp_simulate(sp_data_t p_data)
 {
     /*
     Calculate heliostat field performance. Options include 'nthreads':integer (default All),
@@ -639,74 +676,72 @@ SPEXPORT void sp_simulate(sp_data_t p_data)
     Returns: [table:options]):boolean
     */
 
-
     api_helper *mc = static_cast<api_helper*>(p_data);
-
-    if (cxt.arg_count() > 0)
-    {
-        lk::vardata_t &v = cxt.arg(0);
-        if (v.hash()->find("nthreads") != v.hash()->end())
-            F.SetThreadCount(v.hash()->at("nthreads")->as_integer());
-
-        if (v.hash()->find("update_aimpoints") != v.hash()->end())
-            if (!v.hash()->at("update_aimpoints")->as_boolean())
-                V->flux.aim_method.combo_select("Keep existing");
-    }
+    SolarField* SF = &mc->solarfield;
+    var_map* V = &mc->variables;
+    sim_results* res = &mc->results;
+    SimControl* SC = &mc->sim_control;
+    
+    if (nthreads != 1)
+        SC->SetThreadCount(nthreads);
+    
+    if (update_aimpoints != true)
+        V->flux.aim_method.combo_select("Keep existing");
 
     //Which type of simulation is this?
     int simtype = V->flux.flux_model.mapval();    //0=Delsol, 1=Soltrace
 
     //Set up field, update aimpoints, and simulate at the performance sun position
+    Hvector* helios = SF->getHeliostats();
 
-    Hvector *helios = SF->getHeliostats();
+    if (!interop::PerformanceSimulationPrep(*SF, *helios, simtype)) return false;
 
-    if (!interop::PerformanceSimulationPrep(*SF, *helios, simtype))
-    {
-        cxt.result().assign(0.);
-        return;
-    }
-
-    Vect sun = Ambient::calcSunVectorFromAzZen(SF->getVarMap()->flux.flux_solar_az.Val() * D2R, (90. - SF->getVarMap()->flux.flux_solar_el.Val())*D2R);
+    Vect sun = Ambient::calcSunVectorFromAzZen(V->flux.flux_solar_az.Val() * D2R, (90. - V->flux.flux_solar_el.Val())*D2R);
 
     SF->calcHeliostatShadows(sun);
-    if (SF->ErrCheck())
-    {
-        cxt.result().assign(0.);
-        return;
-    }
+    if (SF->ErrCheck()) return false;
 
-    F.GetResultsObject()->clear();
-    F.GetResultsObject()->resize(1);
+    res->clear();
+    res->resize(1);
 
-    F.StartSimTimer();
+    //TODO: Start a timer -> this uses wxTimerRunner
+    //F.StartSimTimer();
+    std::clock_t start;
+    double duration;
+
+    start = std::clock();
 
     //Which type of simulation?
     bool ok;
     switch (simtype)
     {
     case var_fluxsim::FLUX_MODEL::HERMITE_ANALYTICAL:
-        ok = F.HermiteFluxSimulationHandler(*SF, *helios);
+        ok = interop::HermiteFluxSimulationHandler(*res, *SF, *helios);
         break;
     case var_fluxsim::FLUX_MODEL::SOLTRACE:
-        ok = F.SolTraceFluxSimulation(*SF, *V, *helios);
+        //ok = F.SolTraceFluxSimulation(*SF, *V, *helios);
+        std::runtime_error("SOLTRACE is currently not supported in API.");
+        //TODO: Move SolTraceFluxSimulation to interop -> Requires multi-threading
         break;
     default:
         ok = false;
         break;
     }
 
-    F.StopSimTimer();
+    //F.StopSimTimer();
+    duration = (std::clock() - start) / (double)CLOCKS_PER_SEC;
+    // TODO: where does this need to be stored?
+        // Based on an inital look through, the time appears only on GUI. 
+
     SF->getSimInfoObject()->Reset();
 
-    F.GetFluxPlotObject()->SetPlotData(*SF, *helios, 0);
-    F.GetFieldPlotObject()->SetPlotData(*SF, FIELD_PLOT::EFF_TOT);
+    //F.GetFluxPlotObject()->SetPlotData(*SF, *helios, 0);
+    //F.GetFieldPlotObject()->SetPlotData(*SF, FIELD_PLOT::EFF_TOT);
 
-    cxt.result().assign(ok ? 1. : 0.);
-
-    return;
+    return true;
 }
 
-SPEXPORT void sp_summary_results(sp_data_t p_data)
+SPEXPORT const char *sp_summary_results(sp_data_t p_data)
 {
     /*
 	Return an array of tables with summary results from each simulation. The array length is greater than 1 for multiple-receiver simulations.
@@ -714,37 +749,43 @@ SPEXPORT void sp_summary_results(sp_data_t p_data)
     */
     
     api_helper *mc = static_cast<api_helper*>(p_data);
+    var_map* V = &mc->variables;
 
-    grid_emulator table;
-    sim_results *results = F.GetResultsObject();
+    grid_emulator_base table;
+    sim_results* results = &mc->results;
+
+    std::string ret;    //return string
 
     if (results->size() < 1)
     {
         EditorOutput("No simulation summary results exist. Please simulate first.");
-        return;
+        ret = "Failure";
+        return ret.c_str();
     }
+    
+    // intialize size of string vector
+    //std::vector<std::string> r;
+    //std::vector<std::vector<std::string>> rvec(V->recs.size(), r);
 
-
-    lk::vardata_t &rt = cxt.result();
-    rt.empty_vector();
-    rt.vec()->resize(results->size());
-
-    for (size_t i = 0; i < results->size(); i++)
+    // for multiple receivers
+    for (size_t i = 0; i < V->recs.size(); i++)
     {
-        lk::vardata_t &r = rt.vec()->at(i);
+        interop::CreateResultsTable(results->at(i), table);
+        //F.CreateResultsTable(results->at(i), table);
+        
+        unordered_map<std::string, double> res_map;
 
-        F.CreateResultsTable(results->at(i), table);
-
-        r.empty_hash();
-
-        for (int i = 0; i < table.GetNumberRows(); i++)
-            r.hash_item(table.GetRowLabelValue(i), table.GetCellValue(i, 1));
+        for (int j = 0; j < table.GetNumberRows(); j++)
+        {
+            ret.append(table.GetRowLabelValue(j) + ", " + table.GetCellValue(j, 1) + "\n");
+            res_map.insert({ table.GetRowLabelValue(j), std::stod(table.GetCellValue(j, 1)) });
+        }
 
         //add a few more summary results
-        bool is_soltrace = r.hash()->find("Shadowing and Cosine efficiency") != r.hash()->end();
+        bool is_soltrace = res_map.find("Shadowing and Cosine efficiency") != res_map.end();
 
         double Qwf;
-        double Qin = Qwf = r.hash()->at("Power incident on field")->as_number();
+        double Qin = Qwf = res_map.at("Power incident on field");
 
         if (is_soltrace)
         {
@@ -753,49 +794,48 @@ SPEXPORT void sp_summary_results(sp_data_t p_data)
             for this option, the "Shadowing and Cosine efficiency" is already calculated by the
             program. Just make sure the Shading and Cosine efficiencies aren't double counted.
             */
-            r.hash_item("Shading efficiency", 100.);
-            r.hash_item("Cosine efficiency", 100.);
-            r.hash_item("Shading loss", 0.);
-            r.hash_item("Cosine loss", 0.);
+            ret.append("Shading efficiency, 100.\n");
+            ret.append("Cosine efficiency, 100.\n");
+            ret.append("Shading loss, 0.\n");
+            ret.append("Cosine loss, 0.\n");
 
-            double eta_sc = r.hash()->at("Shadowing and Cosine efficiency")->as_number() / 100.;
+            double eta_sc = res_map.at("Shadowing and Cosine efficiency") / 100.;
             Qwf *= eta_sc;
         }
         else
         {
             //hermite
-            r.hash_item("Shadowing and Cosine efficiency",
-                r.hash()->at("Shading efficiency")->as_number()
-                *r.hash()->at("Cosine efficiency")->as_number() / 100.);
+            double eta_sc = res_map.at("Shading efficiency") * res_map.at("Cosine efficiency") / 100.;
+            ret.append("Shadowing and Cosine efficiency, " + std::to_string(eta_sc) + "\n");
 
-            double eta_s = r.hash()->at("Shading efficiency")->as_number() / 100.;
+            double eta_s = res_map.at("Shading efficiency") / 100.;
             Qwf *= eta_s;
-            r.hash_item("Shading loss", Qin*(1. - eta_s));
-            double eta_c = r.hash()->at("Cosine efficiency")->as_number() / 100.;
-            r.hash_item("Cosine loss", Qwf*(1 - eta_c));
+            ret.append("Shading loss, " + std::to_string(Qin*(1. - eta_s)) + "\n");
+            double eta_c = res_map.at("Cosine efficiency") / 100.;
+            ret.append("Cosine loss, " + std::to_string(Qwf*(1 - eta_c)) + "\n");
             Qwf *= eta_c;
         }
-        r.hash_item("Shadowing and Cosine loss", Qin - Qwf);
+        ret.append("Shadowing and Cosine loss, " + std::to_string(Qin - Qwf) + "\n");
 
-        double eta_r = r.hash()->at("Reflection efficiency")->as_number() / 100.;
-        r.hash_item("Reflection loss", Qwf * (1. - eta_r));
+        double eta_r = res_map.at("Reflection efficiency") / 100.;
+        ret.append("Reflection loss, " + std::to_string(Qwf * (1. - eta_r)) + "\n");
         Qwf *= eta_r;
-        double eta_b = r.hash()->at("Blocking efficiency")->as_number() / 100.;
-        r.hash_item("Blocking loss", Qwf*(1. - eta_b));
+        double eta_b = res_map.at("Blocking efficiency") / 100.;
+        ret.append("Blocking loss, " + std::to_string(Qwf*(1. - eta_b)) + "\n");
         Qwf *= eta_b;
-        double eta_i = r.hash()->at("Image intercept efficiency")->as_number() / 100.;
-        r.hash_item("Image intercept loss", Qwf*(1. - eta_i));
+        double eta_i = res_map.at("Image intercept efficiency") / 100.;
+        ret.append("Image intercept loss, " + std::to_string(Qwf*(1. - eta_i)) + "\n");
         Qwf *= eta_i;
-        double eta_a = r.hash()->at("Absorption efficiency")->as_number() / 100.;
-        r.hash_item("Absorption loss", Qwf*(1. - eta_a));
+        double eta_a = res_map.at("Absorption efficiency") / 100.;
+        ret.append("Absorption loss, " + std::to_string(Qwf*(1. - eta_a)) + "\n");
 
-        r.hash_item("Receiver name", i == 0 ? "All receivers" : results->at(i).receiver_names.front());
+        ret.append("Receiver name, " + i == 0 ? "All receivers" : results->at(i).receiver_names.front() + "\n\n\n");
     }
 
-    return;
+    return ret.c_str();
 }
 
-SPEXPORT void sp_detail_results(sp_data_t p_data)
+SPEXPORT sp_number_t *sp_detail_results(sp_data_t p_data, int* nrows, int* ncols, const char* header, sp_number_t* selhel = NULL, int nselhel = 0)
 {
     /*
 
@@ -813,7 +853,9 @@ SPEXPORT void sp_detail_results(sp_data_t p_data)
         "layout_metric (double), "
         "power_to_receiver (double), "
         "power_reflected (double), "
-        "efficiency (double), "
+        "energy (double),"
+        "annual efficiency (double),"
+        "total efficiency (double), "
         "cosine (double), "
         "intercept (double), "
         "reflectance (double), "
@@ -825,26 +867,27 @@ SPEXPORT void sp_detail_results(sp_data_t p_data)
     */
 
     api_helper *mc = static_cast<api_helper*>(p_data);
+    SolarField* SF = &mc->solarfield;
 
+    std::vector<double>* ret;   //return vector
 
     if (SF->getHeliostats()->size() > 0)
     {
         Hvector helio_select;
 
-        if (cxt.arg_count() > 0) //use selected heliostats
+        if (selhel != NULL) //use selected heliostats
         {
-            //expecting an array of heliostat id's
-            if (cxt.arg(0).type() != lk::vardata_t::VECTOR)
-                return;
-
-            lk::vardata_t &v = cxt.arg(0);
+            //expecting an int array
+            if (typeid(selhel[0]) != typeid(int))
+                return NULL;
 
             std::vector<int> ids;
-            ids.reserve(v.vec()->size());
-            for (size_t i = 0; i < v.vec()->size(); i++)
-                ids.push_back(v.vec()->at(i).as_integer());
+            ids.reserve(nselhel);
 
-            helio_select.reserve(v.vec()->size());
+            for (size_t i = 0; i < nselhel; i++)
+                ids.push_back(selhel[i]);
+
+            helio_select.reserve(nselhel);
 
             unordered_map<int, Heliostat*> *heliosid = SF->getHeliostatsByID();
 
@@ -857,37 +900,39 @@ SPEXPORT void sp_detail_results(sp_data_t p_data)
             helio_select.assign(SF->getHeliostats()->begin(), SF->getHeliostats()->end());
         }
 
+        *nrows = helio_select.size();
+        *ncols = 23;  //number of results in table
+
         //loop through selected heliostats, gathering information
-        cxt.result().empty_vector();
-        cxt.result().vec()->reserve(helio_select.size());
+        ret->reserve((*nrows) * (*ncols));
+
+        /*
+        std::vector<double>* ret;
+        ret = new std::vector<double>[(*nrows) * (*ncols)];
+        ret->reserve((*nrows) * (*ncols));
+        */
 
         for (size_t i = 0; i < helio_select.size(); i++)
         {
-            cxt.result().vec()->push_back(lk::vardata_t());
-            lk::vardata_t &p = cxt.result().vec()->back();
+            //select specific heliostat object
             Heliostat* H = helio_select.at(i);
 
-            p.empty_hash();
-
-            p.hash_item("id", H->getId());
-            p.hash_item("location", lk::vardata_t());
-            p.hash()->at("location")->empty_vector();
-            p.hash()->at("location")->vec_append(H->getLocation()->x);
-            p.hash()->at("location")->vec_append(H->getLocation()->y);
-            p.hash()->at("location")->vec_append(H->getLocation()->z);
-            p.hash_item("aimpoint", lk::vardata_t());
-            p.hash()->at("aimpoint")->empty_vector();
-            p.hash()->at("aimpoint")->vec_append(H->getAimPoint()->x);
-            p.hash()->at("aimpoint")->vec_append(H->getAimPoint()->y);
-            p.hash()->at("aimpoint")->vec_append(H->getAimPoint()->z);
-            p.hash_item("tracking_vector", lk::vardata_t());
-            p.hash()->at("tracking_vector")->empty_vector();
-            p.hash()->at("tracking_vector")->vec_append(H->getTrackVector()->i);
-            p.hash()->at("tracking_vector")->vec_append(H->getTrackVector()->j);
-            p.hash()->at("tracking_vector")->vec_append(H->getTrackVector()->k);
-            p.hash_item("layout_metric", H->getRankingMetricValue());
-            p.hash_item("power_to_receiver", H->getPowerToReceiver() / 1000.);  //kW
-            p.hash_item("power_reflected", H->getArea()
+            ret->push_back(H->getId());
+            ret->push_back(H->getLocation()->x);
+            ret->push_back(H->getLocation()->y);
+            ret->push_back(H->getLocation()->z);
+            
+            ret->push_back(H->getAimPoint()->x);
+            ret->push_back(H->getAimPoint()->y);
+            ret->push_back(H->getAimPoint()->z);
+            
+            ret->push_back(H->getTrackVector()->i);
+            ret->push_back(H->getTrackVector()->j);
+            ret->push_back(H->getTrackVector()->k);
+            
+            ret->push_back(H->getRankingMetricValue());
+            ret->push_back(H->getPowerToReceiver() / 1000.);  //kW
+            ret->push_back(H->getArea()
                 *H->getEfficiencyCosine()
                 *H->getTotalReflectivity()
                 *H->getEfficiencyBlock()
@@ -895,25 +940,74 @@ SPEXPORT void sp_detail_results(sp_data_t p_data)
                 *H->getEfficiencyCloudiness()
                 *SF->getVarMap()->flux.flux_dni.val / 1000. //kW
             );
-            p.hash_item("energy", H->getEnergyValue()); //kWh -- energy delivered over the simulation time period
-            p.hash_item("efficiency_annual", H->getAnnualEfficiency());
-            p.hash_item("efficiency", H->getEfficiencyTotal());
-            p.hash_item("cosine", H->getEfficiencyCosine());
-            p.hash_item("intercept", H->getEfficiencyIntercept());
-            p.hash_item("reflectance", H->getTotalReflectivity());
-            p.hash_item("attenuation", H->getEfficiencyAtten());
-            p.hash_item("blocking", H->getEfficiencyBlock());
-            p.hash_item("shading", H->getEfficiencyShading());
-            p.hash_item("clouds", H->getEfficiencyCloudiness());
+            ret->push_back(H->getEnergyValue()); //kWh -- energy delivered over the simulation time period
+            ret->push_back(H->getAnnualEfficiency());
+            ret->push_back(H->getEfficiencyTotal());
+            ret->push_back(H->getEfficiencyCosine());
+            ret->push_back(H->getEfficiencyIntercept());
+            ret->push_back(H->getTotalReflectivity());
+            ret->push_back(H->getEfficiencyAtten());
+            ret->push_back(H->getEfficiencyBlock());
+            ret->push_back(H->getEfficiencyShading());
+            ret->push_back(H->getEfficiencyCloudiness());
 
+            // TODO: can we do this?
+            /*
+            if (i == 0)
+            {
+                *nrows = helio_select.size();
+                *ncols = ret->size();
+                ret->reserve((*nrows) * (*ncols));
+            }
+            */
         }
 
+        std::string tab_header;
+
+        // UPDATE: If table changes
+        tab_header.append("id,");
+        tab_header.append("x_location,");
+        tab_header.append("y_location,");
+        tab_header.append("z_location,");
+        tab_header.append("x_aimpoint,");
+        tab_header.append("y_aimpoint,");
+        tab_header.append("z_aimpoint,");
+        tab_header.append("i_tracking_vector,");
+        tab_header.append("j_tracking_vector,");
+        tab_header.append("k_tracking_vector,");
+        tab_header.append("layout_metric,");
+        tab_header.append("power_to_receiver,");
+        tab_header.append("power_reflected,");
+        tab_header.append("energy,");
+        tab_header.append("efficiency_annual,");
+        tab_header.append("efficiency,");
+        tab_header.append("cosine,");
+        tab_header.append("intercept,");
+        tab_header.append("reflectance,");
+        tab_header.append("attenuation,");
+        tab_header.append("blocking,");
+        tab_header.append("shading,");
+        tab_header.append("clouds");
+
+        // TODO: Will this work?
+        header = tab_header.c_str();
+
+        return (sp_number_t*)ret;
     }
 
-    return;
+    return NULL;
 }
 
-SPEXPORT void sp_get_fluxmap(sp_data_t p_data)
+SPEXPORT const char* sp_detail_results_header(sp_data_t p_data)
+{
+    std::string ret;
+
+
+
+    return ret.c_str();
+}
+
+SPEXPORT sp_number_t *sp_get_fluxmap(sp_data_t p_data, int* nrows, int* ncols, int rec_id = 0)
 {
 
     /*
@@ -922,17 +1016,16 @@ SPEXPORT void sp_get_fluxmap(sp_data_t p_data)
     */
 
     api_helper *mc = static_cast<api_helper*>(p_data);
+    SolarField* SF = &mc->solarfield;
 
     Receiver *rec;
 
-    if (cxt.arg_count() == 1)
+    if (rec_id != 0)
     {
-        int id = cxt.arg(0).as_integer();
+        if (rec_id > SF->getReceivers()->size() - 1)
+            return NULL;
 
-        if (id > SF->getReceivers()->size() - 1)
-            return;
-
-        rec = SF->getReceivers()->at(id);
+        rec = SF->getReceivers()->at(rec_id);
     }
     else
     {
@@ -941,30 +1034,34 @@ SPEXPORT void sp_get_fluxmap(sp_data_t p_data)
 
     FluxGrid *fg = rec->getFluxSurfaces()->front().getFluxMap();
 
-    cxt.result().empty_vector();
-    cxt.result().vec()->reserve(fg->size());
+    *nrows = fg->size();
+    *ncols = fg->front.size();
+    std::vector<double>* flux_ret;
+    flux_ret->reserve((*nrows) * (*ncols));
 
-    for (size_t i = 0; i < fg->front().size(); i++)
+    std::vector<std::vector<double>> flux_mat(fg->size(), std::vector<double>(fg->front().size(), 0.));
+
+    //TODO: Ask Mike if this is suppose to be reversed, line 894 scripting.cpp
+    //rows
+    for (size_t i = 0; i < fg->size(); i++)
     {
-        cxt.result().vec()->push_back(lk::vardata_t());
-        lk::vardata_t &p = cxt.result().vec()->back();
-
-        p.empty_vector();
-
-        for (size_t j = 0; j < fg->size(); j++)
+        //cols
+        for (size_t j = 0; j < fg->front().size(); j++)
         {
-            p.vec_append(fg->at(j).at(i).flux);
+            flux_ret->push_back(fg->at(i).at(j).flux);
         }
     }
-
+    return (sp_number_t*)flux_ret;
 }
 
-SPEXPORT void sp_optimize(sp_data_t p_data)
+//TODO: Skipped this function initially 
+SPEXPORT void sp_optimize(sp_data_t p_data, sp_number_t* pvalues, int nvar)
 {
     /*
     Execute an optimization run, returning the optimized result and iteration information. 
     Variables to be optimized are passed in a vector, with each row containing a table specifying 
     {variable, step, upbound, lowbound, inital}. The table must include the variable key, others are optional. 
+    
     The return table includes the following: 'result':table of variable names and associated optimized values, 
     'objective':number, 'flux':number, 'iterations':array of evaluation point, objective, flux. 
     Optional arguments include maxiterations/tolerance/defaultstep/powerpenalty/nthreads.,
@@ -973,12 +1070,31 @@ SPEXPORT void sp_optimize(sp_data_t p_data)
     */
 
     api_helper *mc = static_cast<api_helper*>(p_data);
+    var_map* V = &mc->variables;
 
     //get the variable table
     if (cxt.arg_count() < 1 || cxt.arg(0).type() != lk::vardata_t::VECTOR)
         return;
 
     lk::vardata_t &vartab = cxt.arg(0);
+
+    std::stringstream heliodata;
+
+    size_t nvars = nvar;
+    for (size_t i = 0; i < nvars; i++)
+    {
+        for (size_t j = 0; j < 12; j++)
+        {
+            if (j > ncols - 1)
+                heliodata << "NULL";
+            else
+                heliodata << pvalues[j + ncols * i];
+            heliodata << (j < 11 ? "," : ";");
+        }
+
+    }
+    V->sf.layout_data.val = heliodata.str();
+
 
     //set up options, if provided
     if (cxt.arg_count() == 2)
@@ -1161,28 +1277,27 @@ SPEXPORT void sp_optimize(sp_data_t p_data)
 
 }
 
-SPEXPORT void sp_clear_land(sp_data_t p_data)
+SPEXPORT void sp_clear_land(sp_data_t p_data, const char* type = NULL)
 {
     /*
 	Reset the land boundary polygons, clearing any data. Optionally specify 'type' as 'inclusion' or 'exclusion'.
 	Returns: ([string:type]):void
     */
+    api_helper* mc = static_cast<api_helper*>(p_data);
+    var_map* V = &mc->variables;
 
     bool clear_inclusions = true;
     bool clear_exclusions = true;
 
-    if (cxt.arg_count() == 1)
+    if (type != NULL)
     {
-        std::string arg = cxt.arg(0).as_string();
-        arg = lower_case(arg);
+        std::string arg = lower_case(type);
 
         if (arg.find("inclusion") != std::string::npos)
             clear_exclusions = false;
         else if (arg.find("exclusion") != std::string::npos)
             clear_inclusions = false;
     }
-
-    var_map *V = SPFrame::Instance().GetSolarFieldObject()->getVarMap();
 
     if (clear_inclusions)
         V->land.inclusions.val.clear();
@@ -1191,50 +1306,44 @@ SPEXPORT void sp_clear_land(sp_data_t p_data)
 
     if (clear_inclusions && clear_exclusions)
         V->land.is_bounds_array.val = false;
-
 }
 
-SPEXPORT void sp_add_land(sp_data_t p_data)
+SPEXPORT bool sp_add_land(sp_data_t p_data, const char* type, sp_number_t* polygon_points, int* npts , int* ndim, bool is_append = true)
 {
     /*
 	Add land inclusion or a land exclusion region within a specified polygon. Specify the type as 'inclusion' or 'exclusion', and optionally append (true) or overwrite (false) the existing regions.
 	Returns: (array:polygon, string:type[, boolean:append=true]):boolean
-*/
+    */
+    api_helper* mc = static_cast<api_helper*>(p_data);
+    var_map* V = &mc->variables;
+    var_land& L = V->land;
 
-    var_land &L = SPFrame::Instance().GetSolarFieldObject()->getVarMap()->land;
+    std::string type_str = lower_case(type);
 
-    bool is_append = true;
-
-    if (cxt.arg_count() == 3)
-        is_append = cxt.arg(2).as_boolean();
-
-    std::string type = lower_case(cxt.arg(1).as_string().ToStdString());
-
-    if (type.find("incl") != std::string::npos)
-        type = "inclusion";
-    else if (type.find("excl") != std::string::npos)
-        type = "exclusion";
+    if (type_str.find("incl") != std::string::npos)
+        type_str = "inclusion";
+    else if (type_str.find("excl") != std::string::npos)
+        type_str = "exclusion";
     else
     {
         //invalid argument
-        cxt.result().assign(0.);
-        return;
+        return false;
     }
 
     //convert the polygon into the required string format
     std::vector< std::string > pt, poly;
-    for (size_t i = 0; i < cxt.arg(0).vec()->size(); i++)
+    for (size_t i = 0; i < *npts; i++)
     {
         pt.clear();
-        for (size_t j = 0; j < cxt.arg(0).vec()->at(i).vec()->size(); j++)
-            pt.push_back(cxt.arg(0).vec()->at(i).vec()->at(j).as_string().ToStdString());
+        for (size_t j = 0; j < *ndim; j++)
+            pt.push_back(std::to_string(polygon_points[i*(*ndim) + j]));
 
         poly.push_back(join(pt, ","));
     }
 
     std::string spoly = "[POLY]" + join(poly, "[P]");
 
-    if (type == "inclusion")
+    if (type_str == "inclusion")
     {
         if (!is_append)
             L.inclusions.val.clear();
@@ -1251,11 +1360,13 @@ SPEXPORT void sp_add_land(sp_data_t p_data)
 
     L.is_bounds_array.val = true;
 
-    cxt.result().assign(1.);
+    return true;
 
 }
 
-SPEXPORT void sp_heliostats_by_region(sp_data_t p_data)
+SPEXPORT sp_number_t *sp_heliostats_by_region(sp_data_t p_data, int* lenret, const char* coor_sys, bool is_returnloc = false,
+                                                    sp_number_t* arguments = NULL, int* len_arg = NULL, 
+                                                     const char* svgfname_data = NULL, sp_number_t* svg_opt_tab = NULL)
 {
     /*
     Returns heliostats that fall within a region. Options are:
@@ -1270,22 +1381,18 @@ SPEXPORT void sp_heliostats_by_region(sp_data_t p_data)
     Returns an array of included heliostat ID's or locations. : array
     */
 
-    api_helper *mc = static_cast<api_helper*>(p_data);
-
+    api_helper* mc = static_cast<api_helper*>(p_data);
+    SolarField* SF = &mc->solarfield;
     Hvector *helios = SF->getHeliostats();
 
     //which coordinate system?
-    std::string system = cxt.arg(0).as_string();
+    std::string system = (std::string) coor_sys;
 
-    //which return data type?
-    bool is_returnloc = false;
-    if (cxt.arg_count() == 3)
-        is_returnloc = lower_case(cxt.arg(2).as_string().ToStdString()) == "location";
-
-    cxt.result().empty_vector();
+    //return vector -> length is unknown a priori
+    std::vector<double>* ret;
 
     if (helios->size() < 1)
-        return;
+        return NULL;
 
     double delta = 0.0001;
 
@@ -1295,25 +1402,24 @@ SPEXPORT void sp_heliostats_by_region(sp_data_t p_data)
         {
             if (is_returnloc)
             {
-                lk::vardata_t pv;
-                pv.empty_vector();
-                pv.vec_append(helios->at(i)->getLocation()->x);
-                pv.vec_append(helios->at(i)->getLocation()->y);
-                pv.vec_append(helios->at(i)->getLocation()->z);
-
-                cxt.result().vec()->push_back(pv);
+                ret->push_back(helios->at(i)->getLocation()->x);
+                ret->push_back(helios->at(i)->getLocation()->y);
+                ret->push_back(helios->at(i)->getLocation()->z);
             }
             else
-                cxt.result().vec_append((double)helios->at(i)->getId());
+                ret->push_back((double)helios->at(i)->getId());
         }
     }
     else if (lower_case(system) == "cylindrical")
     {
         double rmin, rmax, azmin, azmax;
-        rmin = cxt.arg(1).vec()->at(0).as_number() - delta;
-        rmax = cxt.arg(1).vec()->at(1).as_number() + delta;
-        azmin = cxt.arg(1).vec()->at(2).as_number() - delta;
-        azmax = cxt.arg(1).vec()->at(3).as_number() + delta;
+        if (*len_arg != 4)
+            return NULL;
+     
+        rmin = arguments[0] - delta;
+        rmax = arguments[1] + delta;
+        azmin = arguments[2] - delta;
+        azmax = arguments[3] + delta;
 
         for (size_t i = 0; i < helios->size(); i++)
         {
@@ -1326,30 +1432,29 @@ SPEXPORT void sp_heliostats_by_region(sp_data_t p_data)
                         if (apos < azmax)
                             if (is_returnloc)
                             {
-                                lk::vardata_t pv;
-                                pv.empty_vector();
-                                pv.vec_append(helios->at(i)->getLocation()->x);
-                                pv.vec_append(helios->at(i)->getLocation()->y);
-                                pv.vec_append(helios->at(i)->getLocation()->z);
-
-                                cxt.result().vec()->push_back(pv);
+                                ret->push_back(helios->at(i)->getLocation()->x);
+                                ret->push_back(helios->at(i)->getLocation()->y);
+                                ret->push_back(helios->at(i)->getLocation()->z);
                             }
                             else
-                                cxt.result().vec_append((double)helios->at(i)->getId());
+                                ret->push_back((double)helios->at(i)->getId());
         }
 
     }
     else if (lower_case(system) == "cartesian")
     {
+        if ((*len_arg != 4) || (*len_arg != 6))
+            return NULL;
+
         double xmin, xmax, ymin, ymax, zmin, zmax;
-        xmin = cxt.arg(1).vec()->at(0).as_number() - delta;
-        xmax = cxt.arg(1).vec()->at(1).as_number() + delta;
-        ymin = cxt.arg(1).vec()->at(2).as_number() - delta;
-        ymax = cxt.arg(1).vec()->at(3).as_number() + delta;
-        if (cxt.arg(1).vec()->size() == 6)
+        xmin = arguments[0] - delta;
+        xmax = arguments[1] + delta;
+        ymin = arguments[2] - delta;
+        ymax = arguments[3] + delta;
+        if (*len_arg == 6)
         {
-            zmin = cxt.arg(1).vec()->at(4).as_number() - delta;
-            zmax = cxt.arg(1).vec()->at(5).as_number() + delta;
+            zmin = arguments[4] - delta;
+            zmax = arguments[5] + delta;
         }
         else
         {
@@ -1370,26 +1475,21 @@ SPEXPORT void sp_heliostats_by_region(sp_data_t p_data)
                                 if (loc->z < zmax)
                                     if (is_returnloc)
                                     {
-                                        lk::vardata_t pv;
-                                        pv.empty_vector();
-                                        pv.vec_append(helios->at(i)->getLocation()->x);
-                                        pv.vec_append(helios->at(i)->getLocation()->y);
-                                        pv.vec_append(helios->at(i)->getLocation()->z);
-
-                                        cxt.result().vec()->push_back(pv);
+                                        ret->push_back(helios->at(i)->getLocation()->x);
+                                        ret->push_back(helios->at(i)->getLocation()->y);
+                                        ret->push_back(helios->at(i)->getLocation()->z);
                                     }
                                     else
-                                        cxt.result().vec_append((double)helios->at(i)->getId());
+                                        ret->push_back((double)helios->at(i)->getId());
         }
     }
     else if (lower_case(system) == "polygon")
     {
         //construct a polygon from the listed points
         std::vector< sp_point > polygon;
-        for (size_t i = 0; i < cxt.arg(1).vec()->size(); i++)
+        for (size_t i = 0; i < *len_arg; i++)
         {
-            lk::vardata_t *pt = &cxt.arg(1).vec()->at(i);
-            polygon.push_back(sp_point(pt->vec()->at(0).as_number(), pt->vec()->at(1).as_number(), 0.));
+            polygon.push_back(sp_point(arguments[i], arguments[i++], 0.));
         }
 
         for (size_t i = 0; i < helios->size(); i++)
@@ -1397,16 +1497,12 @@ SPEXPORT void sp_heliostats_by_region(sp_data_t p_data)
             if (Toolbox::pointInPolygon(polygon, *helios->at(i)->getLocation()))
                 if (is_returnloc)
                 {
-                    lk::vardata_t pv;
-                    pv.empty_vector();
-                    pv.vec_append(helios->at(i)->getLocation()->x);
-                    pv.vec_append(helios->at(i)->getLocation()->y);
-                    pv.vec_append(helios->at(i)->getLocation()->z);
-
-                    cxt.result().vec()->push_back(pv);
+                    ret->push_back(helios->at(i)->getLocation()->x);
+                    ret->push_back(helios->at(i)->getLocation()->y);
+                    ret->push_back(helios->at(i)->getLocation()->z);
                 }
                 else
-                    cxt.result().vec_append((double)helios->at(i)->getId());
+                    ret->push_back((double)helios->at(i)->getId());
         }
 
     }
@@ -1428,50 +1524,32 @@ SPEXPORT void sp_heliostats_by_region(sp_data_t p_data)
         if (lower_case(system) == "svgfile")
         {
 
-            std::string fname = cxt.arg(1).as_string();
+            if (!ioutil::file_exists(svgfname_data))
+                throw std::runtime_error("Invalid SVG file - not found.");
 
-            if (!ioutil::file_exists(fname.c_str()))
-                throw lk::error_t("Invalid SVG file - not found.");
-
-            if (cxt.arg_count() == 3)
+            if (svg_opt_tab != NULL)
             {
-                //options table provided
-                if (cxt.arg(2).hash()->find("scale") != cxt.arg(2).hash()->end())
-                {
-                    scale_s.push_back(cxt.arg(2).hash()->at("scale")->vec()->at(0).as_string().ToStdString());
-                    scale_s.push_back(cxt.arg(2).hash()->at("scale")->vec()->at(1).as_string().ToStdString());
-                }
-                else
-                {
-                    scale_s.push_back("1.");
-                    scale_s.push_back("1.");
-                }
+                scale_s.push_back(std::to_string(svg_opt_tab[0]));
+                scale_s.push_back(std::to_string(svg_opt_tab[1]));
 
-                if (cxt.arg(2).hash()->find("offset") != cxt.arg(2).hash()->end())
-                {
-                    offset_s.push_back(cxt.arg(2).hash()->at("offset")->vec()->at(0).as_string().ToStdString());
-                    offset_s.push_back(cxt.arg(2).hash()->at("offset")->vec()->at(1).as_string().ToStdString());
-                }
-                else
-                {
-                    offset_s.push_back("0.");
-                    offset_s.push_back("0.");
-                }
+                offset_s.push_back(std::to_string(svg_opt_tab[2]));
+                offset_s.push_back(std::to_string(svg_opt_tab[3]));
             }
             else
             {
-                offset_s.push_back("0.");
-                offset_s.push_back("0.");
                 scale_s.push_back("1.");
                 scale_s.push_back("1.");
+
+                offset_s.push_back("0.");
+                offset_s.push_back("0.");
             }
 
             //load the svg file and parse it as an xml document
             using namespace rapidxml;
             //Read in the file to a string
-            string file;        //contents of the file
-            string eol;
-            ioutil::read_file(fname, file, eol);
+            std::string file;        //contents of the file
+            std::string eol;
+            ioutil::read_file((std::string) svgfname_data, file, eol);
 
             char *fstr = new char[file.size() + 1];
             strncpy(fstr, (const char*)file.c_str(), file.size());
@@ -1498,7 +1576,9 @@ SPEXPORT void sp_heliostats_by_region(sp_data_t p_data)
         else
         {
             //get the string data and break it up into units
-            std::string data = cxt.arg(1).as_string();
+            if (svgfname_data == NULL)
+                std::runtime_error("svg data must be provided for the svg option.");
+            std::string data = (std::string) svgfname_data;
             entries = split(data, ";");
             scale_s = split(entries.front(), " ");
             offset_s = split(entries.at(1), " ");
@@ -1545,32 +1625,29 @@ SPEXPORT void sp_heliostats_by_region(sp_data_t p_data)
                 {
                     if (is_returnloc)
                     {
-                        lk::vardata_t pv;
-                        pv.empty_vector();
-                        pv.vec_append(loc->x);
-                        pv.vec_append(loc->y);
-                        pv.vec_append(loc->z);
-
-                        cxt.result().vec()->push_back(pv);
+                        ret->push_back(loc->x);
+                        ret->push_back(loc->y);
+                        ret->push_back(loc->z);
                     }
                     else
-                        cxt.result().vec_append((double)helios->at(i)->getId());
+                        ret->push_back((double)helios->at(i)->getId());
 
                     //if included, don't need to check other polygons
                     break;
                 }
             }
         }
-
-
     }
     else
     {
-        throw lk::error_t("invalid region type specified. Expecting one of [cylindrical, cartesian, polygon]");
+        throw std::runtime_error("invalid region type specified. Expecting one of [cylindrical, cartesian, polygon]");
     }
+    // pass back size of return vector
+    *lenret = ret->size();
+    return (sp_number_t*)ret;
 }
 
-SPEXPORT void sp_modify_heliostats(sp_data_t p_data)
+SPEXPORT bool sp_modify_heliostats(sp_data_t p_data, sp_number_t* helio_data, int* nhel, int* ncols, const char* table_hdr)
 {
 
     /*
@@ -1584,17 +1661,26 @@ SPEXPORT void sp_modify_heliostats(sp_data_t p_data)
     */
 
     api_helper *mc = static_cast<api_helper*>(p_data);
+    SolarField* SF = &mc->solarfield;
     
     if (SF->getHeliostats()->size() < 1)
-        return;
+        return false;
 
     //collect all relevant heliostat ID's
     std::vector< int > hids;
+    std::vector< std::vector < double >> data_table;
 
-    //pull the ID's from the provided array
-    std::vector< lk::vardata_t > *vec = cxt.arg(0).vec();
-    for (size_t i = 0; i < vec->size(); i++)
-        hids.push_back(vec->at(i).as_integer());
+    //pull the ID's and data from the provided array
+    for (size_t i = 0; i < (*nhel); i++)
+    {
+        for (size_t j = 0; j < (*ncols); j++)
+        {
+            if (j == 0)
+                hids.push_back((int)helio_data[i * (*ncols) + j]);
+            else
+                data_table[i].push_back((double)helio_data[i * (*ncols) + j]);
+        }
+    }
 
     //consolidate all heliostat's into a vector by ID
     unordered_map< int, Heliostat* > *hmap = SF->getHeliostatsByID();
@@ -1611,8 +1697,10 @@ SPEXPORT void sp_modify_heliostats(sp_data_t p_data)
         }
     }
 
-    //get the variable table
-    lk::varhash_t *vars = cxt.arg(1).hash();
+    //get the variable table header
+    std::string hdr_str(table_hdr);
+    std::vector<std::string> vars;
+    vars = split(hdr_str, ",");
 
     //these are the supported options
     std::vector< std::string > attrs = {
@@ -1624,24 +1712,39 @@ SPEXPORT void sp_modify_heliostats(sp_data_t p_data)
     };
 
     //for each provided option
-    for (lk::varhash_t::iterator var = vars->begin(); var != vars->end(); var++)
+    int var_i = 0;
+    for (std::size_t j = 0; j<*ncols - 1; j++)
     {
-        std::string varname = var->first;
-        lk::vardata_t val = *var->second;
+        std::string varname = vars[var_i];
+        var_i++;
 
         //first make sure this is a valid attribute
         if (std::find(attrs.begin(), attrs.end(), varname) == attrs.end())
-            throw lk::error_t("Invalid attribute specified: " + varname);
+            throw std::runtime_error("Invalid attribute specified: " + varname);
 
         if (varname == "location")
         {
+            /*
+            //gather data (assuming the next two columns are y and z)
+            std::vector<std::vector<double>>* locvec;
+            for (std::size_t i = 0; i < helios.size(); i++)
+            {
+                locvec->at(i).push_back(data_table[i][j]);
+                locvec->at(i).push_back(data_table[i][j+1]);
+                locvec->at(i).push_back(data_table[i][j+2]);
+            }
+            j += 2;  // advance column count
+            */
+
             //locations need to be modified through the layout shell object
             layout_shell *layout = SF->getLayoutShellObject();
 
+            /*
             //make sure the heliostat ID's array is the same length as the location array
-            std::vector< lk::vardata_t > *locvec = cxt.arg(1).hash()->at("location")->vec();
             if (locvec->size() != helios.size())
-                throw lk::error_t("The number of locations provided does not match the number of heliostat ID's provided.");
+                throw std::runtime_error("The number of locations provided does not match the number of heliostat ID's provided.");
+            */
+
             //assign location(s)
             layout->clear();
 
@@ -1658,76 +1761,94 @@ SPEXPORT void sp_modify_heliostats(sp_data_t p_data)
                 lobj.helio_type = helios.at(i)->getMasterTemplate()->getId();
 
                 //update location
-                lobj.location.x = locvec->at(i).vec()->at(0).as_number();
-                lobj.location.y = locvec->at(i).vec()->at(1).as_number();
-                lobj.location.z = 0.;
+                lobj.location.x = data_table[i][j];
+                lobj.location.y = data_table[i][j+1];
+                lobj.location.z = data_table[i][j+2];
 
                 //update enabled/in layout statuses
                 lobj.is_enabled = helios.at(i)->IsEnabled();
                 lobj.is_in_layout = helios.at(i)->IsInLayout();
 
-                if (locvec->at(i).vec()->size() > 2)
-                    lobj.location.z = locvec->at(i).vec()->at(2).as_number();
-
+                /* TODO:
+                if (locvec->at(i).size() > 2)
+                    lobj.location.z = locvec->at(i).at(2);
+                */
             }
+            j += 2;
+
             SF->PrepareFieldLayout(*SF, 0, true);
         }
         else if (varname == "aimpoint")
         {
+            /* TODO:
             //make sure the heliostat ID's array is the same length as the aimpoint array
             std::vector< lk::vardata_t > *aimvec = cxt.arg(1).hash()->at("aimpoint")->vec();
             if (aimvec->size() != helios.size())
-                throw lk::error_t("The number of aimpoints provided does not match the number of heliostat ID's provided.");
+                throw std::runtime_error("The number of aimpoints provided does not match the number of heliostat ID's provided.");
+            */
+            
             //assign aimpoint(s)
+            //gather data (assuming the next two columns are j and k)
             for (size_t i = 0; i < helios.size(); i++)
             {
-                double ii = aimvec->at(i).vec()->at(0).as_number();
-                double j = aimvec->at(i).vec()->at(1).as_number();
-                double k = aimvec->at(i).vec()->at(2).as_number();
+                double ii = data_table[i][j];
+                double jj = data_table[i][j + 1];
+                double kk = data_table[i][j + 2];
 
-                helios.at(i)->setAimPoint(ii, j, k);
+                helios.at(i)->setAimPoint(ii, jj, kk);
             }
+            j += 2;  // advance column count
 
         }
         else if (varname == "soiling")
         {
+            /* TODO:
             //make sure the heliostat ID's array is the same length as the soiling array
             std::vector< lk::vardata_t > *svec = cxt.arg(1).hash()->at("soiling")->vec();
             if (svec->size() != helios.size())
-                throw lk::error_t("The number of soiling values provided does not match the number of heliostat ID's provided.");
+                throw std::runtime_error("The number of soiling values provided does not match the number of heliostat ID's provided.");
+            */
+            
             //assign soiling(s)
             for (size_t i = 0; i < helios.size(); i++)
-                helios.at(i)->getEfficiencyObject()->soiling = svec->at(i).as_number();
+                helios.at(i)->getEfficiencyObject()->soiling = data_table[i][j];
 
         }
         else if (varname == "reflectivity")
         {
+            /*
             //make sure the heliostat ID's array is the same length as the soiling array
             std::vector< lk::vardata_t > *svec = cxt.arg(1).hash()->at("reflectivity")->vec();
             if (svec->size() != helios.size())
-                throw lk::error_t("The number of reflectivity values provided does not match the number of heliostat ID's provided.");
+                throw std::runtime_error("The number of reflectivity values provided does not match the number of heliostat ID's provided.");
+            */
+            
             //assign reflectivities
             for (size_t i = 0; i < helios.size(); i++)
-                helios.at(i)->getEfficiencyObject()->reflectivity = svec->at(i).as_number();
+                helios.at(i)->getEfficiencyObject()->reflectivity = data_table[i][j];
 
         }
         else if (varname == "enabled")
         {
+            /* TODO:
             //make sure the heliostat ID's array is the same length as the soiling array
             std::vector< lk::vardata_t > *svec = cxt.arg(1).hash()->at("enabled")->vec();
             if (svec->size() != helios.size())
-                throw lk::error_t("The number of 'enabled' values provided does not match the number of heliostat ID's provided.");
-            //assign reflectivities
+                throw std::runtime_error("The number of 'enabled' values provided does not match the number of heliostat ID's provided.");
+            */
+            //Enable
             for (size_t i = 0; i < helios.size(); i++)
-                helios.at(i)->IsEnabled(svec->at(i).as_boolean() ? true : false);
-
+                if ((int) data_table[i][j] == 1)
+                    helios.at(i)->IsEnabled(true);
+                else
+                    helios.at(i)->IsEnabled(false);
         }
 
     }
-
+    return true;
 }
 
-SPEXPORT void sp_save_from_script(sp_data_t p_data)
+SPEXPORT bool sp_save_from_script(sp_data_t p_data, const char* sp_fname)
 {
     /*
 	Save the current case as a SolarPILOT .spt file. Returns true if successful.
@@ -1735,39 +1856,37 @@ SPEXPORT void sp_save_from_script(sp_data_t p_data)
     */
 
     api_helper *mc = static_cast<api_helper*>(p_data);
+    var_map* V = &mc->variables;
 
-    std::string fname = cxt.arg(0).as_string();
+    std::string fname(sp_fname);
     if (!ioutil::dir_exists(ioutil::path_only(fname).c_str()))
     {
-        cxt.result().assign(0.);
-        return;
+        return false;
     }
 
     try
     {
         ioutil::saveXMLInputFile(fname, *V, *F.GetParametricDataObject(), *F.GetOptimizationDataObject(), F.GetVersionInfo() + " (lk script)");
-
-        cxt.result().assign(1.);
+        return true;
     }
     catch (...)
     {
-        cxt.result().assign(0.);
-        return;
+
     }
+    return false;
 }
 
-SPEXPORT void sp_open_from_script(sp_data_t p_data)
+SPEXPORT bool sp_open_from_script(sp_data_t p_data, const char* sp_fname, const char* error)
 {
     /*
 	Open a SolarPILOT .spt case file. Returns true if successful. Updates the interface.
 	Returns: (string:path):boolean
     */
 
-    std::string fname = cxt.arg(0).as_string();
+    std::string fname(sp_fname);
     if (!ioutil::dir_exists(ioutil::path_only(fname).c_str()))
     {
-        cxt.result().assign(0.);
-        return;
+        return false;
     }
 
     api_helper *mc = static_cast<api_helper*>(p_data);
@@ -1775,34 +1894,32 @@ SPEXPORT void sp_open_from_script(sp_data_t p_data)
     try
     {
         F.Open(fname, true);
-        cxt.result().assign(1.);
-        return;
+        return true;
     }
-    catch (exception &e)
+    catch (std::exception &e)
     {
-        cxt.error().assign(e.what());
+        error = e.what();
     }
-
-    cxt.result().assign(0.);
-
+    return false;
 }
 
-SPEXPORT void sp_dump_varmap(sp_data_t p_data)
+SPEXPORT bool sp_dump_varmap(sp_data_t p_data, const char* sp_fname, const char* error)
 {
     /*
 	Dump the variable structure to a text csv file. Returns true if successful.
 	Returns: (string:path):boolean
     */
+    api_helper* mc = static_cast<api_helper*>(p_data);
+    var_map* V = &mc->variables;
 
     //valid path?
-    std::string fname = cxt.arg(0).as_string();
+    std::string fname(sp_fname);
     if (!ioutil::dir_exists(ioutil::path_only(fname).c_str()))
     {
-        cxt.result().assign(0.);
-        return;
+        return false;
     }
 
-    var_map *V = SPFrame::Instance().GetSolarFieldObject()->getVarMap();
+    //var_map *V = SPFrame::Instance().GetSolarFieldObject()->getVarMap();
 
     try
     {
@@ -1815,7 +1932,7 @@ SPEXPORT void sp_dump_varmap(sp_data_t p_data)
 
         sort(names.begin(), names.end());   //output the variables alphabetically
 
-        ofstream of(fname);
+        std::ofstream of( fname );
         std::string sep = " ,";
 
         if (of.is_open())      //check whether the file is accessible
@@ -1853,18 +1970,13 @@ SPEXPORT void sp_dump_varmap(sp_data_t p_data)
             }
 
             of.close();
-            cxt.result().assign(1.);  //success
+            return true;  //success
         }
 
     }
-    catch (exception &e)
+    catch (std::exception &e)
     {
-        cxt.error().assign(e.what());
+        error = e.what();
     }
-
-    cxt.result().assign(0.);  //failed
-
+    return false;
 }
-
-
-
