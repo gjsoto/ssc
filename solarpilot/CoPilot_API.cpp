@@ -24,6 +24,7 @@ struct api_helper
     sim_results results;
     LayoutSimThread* simthread;
     SimControl sim_control;
+    STSimControl STsim_control;
 
     api_helper()
     {
@@ -48,6 +49,11 @@ SPEXPORT void sp_data_free(sp_data_t p_data)
     if (p_data)
         delete p_data;
 }
+
+SPEXPORT void var_free_memory(sp_number_t* varptr)
+{
+    delete[] varptr;
+};
 
 SPEXPORT void sp_set_value(sp_data_t p_data, const char* name, sp_number_t v)
 {
@@ -349,15 +355,10 @@ SPEXPORT int sp_add_receiver(sp_data_t p_data, const char* receiver_name)
     //Re-create the solar field object
     mc->solarfield.Create(*V);
     
-    //F.UpdateReceiverUITemplates();   // TODO: Need to confirm no variables are changed.
-
-    //update the input display
-        //F.UpdateCalculatedGUIValues();    // Updates clculated parameters
+    //update the calculated parameters
     mc->solarfield.updateAllCalculatedParameters(*V);
-
     mc->solarfield.updateCalculatedReceiverPower(*V);  // (line 1783) unsure if this is necessary
 
-    //cxt.result().assign((double)SPFrame::Instance().GetVariablesObject()->recs.back().id.val);
     return V->recs.back().id.val; 
 }
 
@@ -380,12 +381,10 @@ SPEXPORT int sp_drop_receiver(sp_data_t p_data, const char* receiver_name)
             //delete the item
             V->drop_receiver(V->recs.at(i).id.val);
             mc->solarfield.Create(*V);
-            //cxt.result().assign(1.);
             return 1.;
         }
     }
 
-    //cxt.result().assign(0.);
     return 0.;
 }
 
@@ -443,14 +442,11 @@ SPEXPORT int sp_drop_heliostat_template(sp_data_t p_data, const char* heliostat_
         {
             //delete the item
             V->drop_heliostat(V->hels.at(i).id.val);
-            //SF->Create(*V);
             mc->solarfield.Create(*V);
-            //cxt.result().assign(1.);
             return 1.;
         }
     }
 
-    //cxt.result().assign(0.);
     return 0.;
 }
 
@@ -497,7 +493,7 @@ SPEXPORT int sp_update_geometry(sp_data_t p_data)
         local_wfdat.at(i) = line;
     }
 
-    //Update the design method box.. this actually updates both the map values and GUI. Probably should fix this sometime..
+    //TODO: Update the design method box.. this actually updates both the map values and GUI. Probably should fix this sometime..
     //F.UpdateDesignSelect(V->sf.des_sim_detail.mapval(), *V);
         // Function seems to only update var_map with simulation data through GenearateSimulationWeatherData()
     interop::GenerateSimulationWeatherData(*V, V->sf.des_sim_detail.mapval(), local_wfdat);
@@ -513,7 +509,6 @@ SPEXPORT int sp_update_geometry(sp_data_t p_data)
         if (mc->solarfield.ErrCheck())
         {
             std::runtime_error("An error occurred when preparing the updated field geometry in the call 'update_geometry'.");
-            //cxt.result().assign(0.);
             return 0.;
         }
 
@@ -529,7 +524,6 @@ SPEXPORT int sp_update_geometry(sp_data_t p_data)
         if (SF->ErrCheck())
         {
             std::runtime_error("An error occurred when preparing the updated field geometry in the call 'update_geometry'.");
-            //cxt.result().assign(0.);
             return 0.;
         }
     }
@@ -537,17 +531,14 @@ SPEXPORT int sp_update_geometry(sp_data_t p_data)
     {
         std::runtime_error("An error occurred when preparing the updated field geometry in the call 'update_geometry'. Error:\n");
         std::runtime_error(e.what());
-        //cxt.result().assign(0.);
         return 0.;
     }
     catch (...)
     {
         std::runtime_error("Unknown error when executing 'update_geometry'.");
-        //cxt.result().assign(0.);
         return 0.;
     }
 
-    //cxt.result().assign(1.);
     return 1.;
 }
 
@@ -584,7 +575,6 @@ SPEXPORT bool sp_assign_layout(sp_data_t p_data, sp_number_t *pvalues, int nrows
     //user specified layout
     V->sf.layout_method.combo_select_by_mapval(var_solarfield::LAYOUT_METHOD::USERDEFINED);
 
-    //TODO: Will this work?
     bool simok = sp_generate_layout(p_data, nthreads);
 
     return simok;
@@ -618,13 +608,12 @@ SPEXPORT bool sp_generate_layout(sp_data_t p_data, int nthreads = 0) //, bool sa
 
     SF->Clean();
     SF->Create(*V);
-    
     bool simok = interop::DoManagedLayout(*SC, *SF, *V, SThread);        //Returns TRUE if successful
 
     return simok;
 }
 
-SPEXPORT bool sp_get_layout_info(sp_data_t p_data, sp_number_t *layoutinfo, sp_number_t* nhelio, sp_number_t* ncol)
+SPEXPORT bool sp_get_layout_info(sp_data_t p_data, sp_number_t *layoutinfo, int* nhelio, int* ncol)
 {
     /*
     Get information regarding the heliostat field layout. Returns matrix with each row corresponding to a heliostat.
@@ -640,32 +629,30 @@ SPEXPORT bool sp_get_layout_info(sp_data_t p_data, sp_number_t *layoutinfo, sp_n
     htemp_map htemps = *SF->getHeliostatTemplates();
 
     *nhelio = hels->size();
-    unsigned int ncol_i = 6;
-    *ncol = (sp_number_t)ncol_i;
+    *ncol = 6;
 
     layoutinfo = new sp_number_t[(*nhelio) * (*ncol)];
-    //  TODO: Free memory somewhere -> look to see what SSC API does for this
 
+    int c;
     for (size_t i = 0; i < (int)hels->size(); i++)
     {
         sp_point* loc = hels->at(i)->getLocation();
 
-        layoutinfo[i * ncol_i + 0] = hels->at(i)->getId();
-        layoutinfo[i * ncol_i + 1] = loc->x;
-        layoutinfo[i * ncol_i + 2] = loc->y;
-        layoutinfo[i * ncol_i + 3] = loc->z;
-        layoutinfo[i * ncol_i + 4] = hels->at(i)->getMasterTemplate()->getVarMap()->id.val;
-        layoutinfo[i * ncol_i + 5] = hels->at(i)->getRankingMetricValue();
+        c = 0;  layoutinfo[i * (*ncol) + c] = hels->at(i)->getId();
+        c++;  layoutinfo[i * (*ncol) + c] = loc->x;
+        c++;  layoutinfo[i * (*ncol) + c] = loc->y;
+        c++;  layoutinfo[i * (*ncol) + c] = loc->z;
+        c++;  layoutinfo[i * (*ncol) + c] = hels->at(i)->getMasterTemplate()->getVarMap()->id.val;
+        c++;  layoutinfo[i * (*ncol) + c] = hels->at(i)->getRankingMetricValue();
 
+        if ((i == 0) && (c != *ncol - 1))
+        {
+            std::runtime_error("Information was lost check sp_get_layout_info output formating.");
+        }
     }
 
     return true;
 }
-
-SPEXPORT void var_free_memory(sp_number_t* varptr)
-{
-    delete[] varptr;
-};
 
 SPEXPORT bool sp_simulate(sp_data_t p_data, int nthreads = 1, bool save_detail = true, bool update_aimpoints = true)
 //SPEXPORT void sp_simulate(sp_data_t p_data)
@@ -763,10 +750,6 @@ SPEXPORT const char *sp_summary_results(sp_data_t p_data)
         return ret.c_str();
     }
     
-    // intialize size of string vector
-    //std::vector<std::string> r;
-    //std::vector<std::vector<std::string>> rvec(V->recs.size(), r);
-
     // for multiple receivers
     for (size_t i = 0; i < V->recs.size(); i++)
     {
@@ -835,7 +818,7 @@ SPEXPORT const char *sp_summary_results(sp_data_t p_data)
     return ret.c_str();
 }
 
-SPEXPORT sp_number_t *sp_detail_results(sp_data_t p_data, int* nrows, int* ncols, const char* header, sp_number_t* selhel = NULL, int nselhel = 0)
+SPEXPORT bool sp_detail_results(sp_data_t p_data, sp_number_t* ret, int* nrows, int* ncols, const char* header, sp_number_t* selhel = NULL, int nselhel = 0)
 {
     /*
 
@@ -877,15 +860,11 @@ SPEXPORT sp_number_t *sp_detail_results(sp_data_t p_data, int* nrows, int* ncols
 
         if (selhel != NULL) //use selected heliostats
         {
-            //expecting an int array
-            if (typeid(selhel[0]) != typeid(int))
-                return NULL;
-
             std::vector<int> ids;
             ids.reserve(nselhel);
 
             for (size_t i = 0; i < nselhel; i++)
-                ids.push_back(selhel[i]);
+                ids.push_back((int)selhel[i]);
 
             helio_select.reserve(nselhel);
 
@@ -904,67 +883,56 @@ SPEXPORT sp_number_t *sp_detail_results(sp_data_t p_data, int* nrows, int* ncols
         *ncols = 23;  //number of results in table
 
         //loop through selected heliostats, gathering information
-        ret->reserve((*nrows) * (*ncols));
+        ret = new sp_number_t[(*nrows) * (*ncols)];
 
-        /*
-        std::vector<double>* ret;
-        ret = new std::vector<double>[(*nrows) * (*ncols)];
-        ret->reserve((*nrows) * (*ncols));
-        */
-
+        int c;
         for (size_t i = 0; i < helio_select.size(); i++)
         {
             //select specific heliostat object
             Heliostat* H = helio_select.at(i);
 
-            ret->push_back(H->getId());
-            ret->push_back(H->getLocation()->x);
-            ret->push_back(H->getLocation()->y);
-            ret->push_back(H->getLocation()->z);
+            c = 0; ret[i*(*ncols) + c] = H->getId();
+            c++; ret[i * (*ncols) + c] = H->getLocation()->x;
+            c++; ret[i * (*ncols) + c] = H->getLocation()->y;
+            c++; ret[i * (*ncols) + c] = H->getLocation()->z;
             
-            ret->push_back(H->getAimPoint()->x);
-            ret->push_back(H->getAimPoint()->y);
-            ret->push_back(H->getAimPoint()->z);
+            c++; ret[i * (*ncols) + c] = H->getAimPoint()->x;
+            c++; ret[i * (*ncols) + c] = H->getAimPoint()->y;
+            c++; ret[i * (*ncols) + c] = H->getAimPoint()->z;
             
-            ret->push_back(H->getTrackVector()->i);
-            ret->push_back(H->getTrackVector()->j);
-            ret->push_back(H->getTrackVector()->k);
+            c++; ret[i * (*ncols) + c] = H->getTrackVector()->i;
+            c++; ret[i * (*ncols) + c] = H->getTrackVector()->j;
+            c++; ret[i * (*ncols) + c] = H->getTrackVector()->k;
             
-            ret->push_back(H->getRankingMetricValue());
-            ret->push_back(H->getPowerToReceiver() / 1000.);  //kW
-            ret->push_back(H->getArea()
+            c++; ret[i * (*ncols) + c] = H->getRankingMetricValue();
+            c++; ret[i * (*ncols) + c] = H->getPowerToReceiver() / 1000.;  //kW
+            c++; ret[i * (*ncols) + c] = H->getArea()
                 *H->getEfficiencyCosine()
                 *H->getTotalReflectivity()
                 *H->getEfficiencyBlock()
                 *H->getEfficiencyShading()
                 *H->getEfficiencyCloudiness()
-                *SF->getVarMap()->flux.flux_dni.val / 1000. //kW
-            );
-            ret->push_back(H->getEnergyValue()); //kWh -- energy delivered over the simulation time period
-            ret->push_back(H->getAnnualEfficiency());
-            ret->push_back(H->getEfficiencyTotal());
-            ret->push_back(H->getEfficiencyCosine());
-            ret->push_back(H->getEfficiencyIntercept());
-            ret->push_back(H->getTotalReflectivity());
-            ret->push_back(H->getEfficiencyAtten());
-            ret->push_back(H->getEfficiencyBlock());
-            ret->push_back(H->getEfficiencyShading());
-            ret->push_back(H->getEfficiencyCloudiness());
+                *SF->getVarMap()->flux.flux_dni.val / 1000.;  //kW
+            c++; ret[i * (*ncols) + c] = H->getEnergyValue(); //kWh -- energy delivered over the simulation time period
+            c++; ret[i * (*ncols) + c] = H->getAnnualEfficiency();
+            c++; ret[i * (*ncols) + c] = H->getEfficiencyTotal();
+            c++; ret[i * (*ncols) + c] = H->getEfficiencyCosine();
+            c++; ret[i * (*ncols) + c] = H->getEfficiencyIntercept();
+            c++; ret[i * (*ncols) + c] = H->getTotalReflectivity();
+            c++; ret[i * (*ncols) + c] = H->getEfficiencyAtten();
+            c++; ret[i * (*ncols) + c] = H->getEfficiencyBlock();
+            c++; ret[i * (*ncols) + c] = H->getEfficiencyShading();
+            c++; ret[i * (*ncols) + c] = H->getEfficiencyCloudiness();
 
-            // TODO: can we do this?
-            /*
-            if (i == 0)
+            if ((i == 0) && (c != *ncols - 1))
             {
-                *nrows = helio_select.size();
-                *ncols = ret->size();
-                ret->reserve((*nrows) * (*ncols));
+                std::runtime_error("Information was lost check sp_detail_results output formating.");
             }
-            */
         }
 
         std::string tab_header;
 
-        // UPDATE: If table changes
+        // UPDATE: If table results change
         tab_header.append("id,");
         tab_header.append("x_location,");
         tab_header.append("y_location,");
@@ -989,25 +957,16 @@ SPEXPORT sp_number_t *sp_detail_results(sp_data_t p_data, int* nrows, int* ncols
         tab_header.append("shading,");
         tab_header.append("clouds");
 
-        // TODO: Will this work?
         header = tab_header.c_str();
 
-        return (sp_number_t*)ret;
+        return true;
     }
 
-    return NULL;
+    return false;
 }
 
-SPEXPORT const char* sp_detail_results_header(sp_data_t p_data)
-{
-    std::string ret;
 
-
-
-    return ret.c_str();
-}
-
-SPEXPORT sp_number_t *sp_get_fluxmap(sp_data_t p_data, int* nrows, int* ncols, int rec_id = 0)
+SPEXPORT bool sp_get_fluxmap(sp_data_t p_data, sp_number_t* fluxmap, int* nrows, int* ncols, int rec_id = 0)
 {
 
     /*
@@ -1023,7 +982,7 @@ SPEXPORT sp_number_t *sp_get_fluxmap(sp_data_t p_data, int* nrows, int* ncols, i
     if (rec_id != 0)
     {
         if (rec_id > SF->getReceivers()->size() - 1)
-            return NULL;
+            return false;
 
         rec = SF->getReceivers()->at(rec_id);
     }
@@ -1035,23 +994,19 @@ SPEXPORT sp_number_t *sp_get_fluxmap(sp_data_t p_data, int* nrows, int* ncols, i
     FluxGrid *fg = rec->getFluxSurfaces()->front().getFluxMap();
 
     *nrows = fg->size();
-    *ncols = fg->front.size();
-    std::vector<double>* flux_ret;
-    flux_ret->reserve((*nrows) * (*ncols));
+    *ncols = fg->front().size();
+    fluxmap = new sp_number_t[(*nrows) * (*ncols)];
 
-    std::vector<std::vector<double>> flux_mat(fg->size(), std::vector<double>(fg->front().size(), 0.));
-
-    //TODO: Ask Mike if this is suppose to be reversed, line 894 scripting.cpp
     //rows
     for (size_t i = 0; i < fg->size(); i++)
     {
         //cols
         for (size_t j = 0; j < fg->front().size(); j++)
         {
-            flux_ret->push_back(fg->at(i).at(j).flux);
+            fluxmap[i * (*ncols) + j] = fg->at(fg->size()-1-i).at(j).flux;
         }
     }
-    return (sp_number_t*)flux_ret;
+    return true;
 }
 
 //TODO: Skipped this function initially 
@@ -1364,7 +1319,7 @@ SPEXPORT bool sp_add_land(sp_data_t p_data, const char* type, sp_number_t* polyg
 
 }
 
-SPEXPORT sp_number_t *sp_heliostats_by_region(sp_data_t p_data, int* lenret, const char* coor_sys, bool is_returnloc = false,
+SPEXPORT bool sp_heliostats_by_region(sp_data_t p_data, sp_number_t* retvec, int* lenret, const char* coor_sys, bool is_returnloc = false,
                                                     sp_number_t* arguments = NULL, int* len_arg = NULL, 
                                                      const char* svgfname_data = NULL, sp_number_t* svg_opt_tab = NULL)
 {
@@ -1392,7 +1347,7 @@ SPEXPORT sp_number_t *sp_heliostats_by_region(sp_data_t p_data, int* lenret, con
     std::vector<double>* ret;
 
     if (helios->size() < 1)
-        return NULL;
+        return false;
 
     double delta = 0.0001;
 
@@ -1414,7 +1369,7 @@ SPEXPORT sp_number_t *sp_heliostats_by_region(sp_data_t p_data, int* lenret, con
     {
         double rmin, rmax, azmin, azmax;
         if (*len_arg != 4)
-            return NULL;
+            return false;
      
         rmin = arguments[0] - delta;
         rmax = arguments[1] + delta;
@@ -1444,7 +1399,7 @@ SPEXPORT sp_number_t *sp_heliostats_by_region(sp_data_t p_data, int* lenret, con
     else if (lower_case(system) == "cartesian")
     {
         if ((*len_arg != 4) || (*len_arg != 6))
-            return NULL;
+            return false;
 
         double xmin, xmax, ymin, ymax, zmin, zmax;
         xmin = arguments[0] - delta;
@@ -1586,8 +1541,6 @@ SPEXPORT sp_number_t *sp_heliostats_by_region(sp_data_t p_data, int* lenret, con
             entries.erase(entries.begin(), entries.begin() + 2);
         }
 
-
-
         //get the scale and offset vectors
         double scale_x, scale_y, offset_x, offset_y;
 
@@ -1642,9 +1595,13 @@ SPEXPORT sp_number_t *sp_heliostats_by_region(sp_data_t p_data, int* lenret, con
     {
         throw std::runtime_error("invalid region type specified. Expecting one of [cylindrical, cartesian, polygon]");
     }
-    // pass back size of return vector
+    // pass back size of return vector and vector values
     *lenret = ret->size();
-    return (sp_number_t*)ret;
+    retvec = new sp_number_t[*lenret];
+    for (int i = 0; i < ret->size(); i++)
+        retvec[i] = ret->at(i);
+
+    return true;
 }
 
 SPEXPORT bool sp_modify_heliostats(sp_data_t p_data, sp_number_t* helio_data, int* nhel, int* ncols, const char* table_hdr)
@@ -1876,7 +1833,7 @@ SPEXPORT bool sp_save_from_script(sp_data_t p_data, const char* sp_fname)
     return false;
 }
 
-SPEXPORT bool sp_open_from_script(sp_data_t p_data, const char* sp_fname, const char* error)
+SPEXPORT bool sp_open_from_script(sp_data_t p_data, const char* sp_fname)
 {
     /*
 	Open a SolarPILOT .spt case file. Returns true if successful. Updates the interface.
@@ -1898,12 +1855,12 @@ SPEXPORT bool sp_open_from_script(sp_data_t p_data, const char* sp_fname, const 
     }
     catch (std::exception &e)
     {
-        error = e.what();
+        std::runtime_error(e.what());
     }
     return false;
 }
 
-SPEXPORT bool sp_dump_varmap(sp_data_t p_data, const char* sp_fname, const char* error)
+SPEXPORT bool sp_dump_varmap(sp_data_t p_data, const char* sp_fname)
 {
     /*
 	Dump the variable structure to a text csv file. Returns true if successful.
@@ -1976,7 +1933,7 @@ SPEXPORT bool sp_dump_varmap(sp_data_t p_data, const char* sp_fname, const char*
     }
     catch (std::exception &e)
     {
-        error = e.what();
+        std::runtime_error(e.what());
     }
     return false;
 }

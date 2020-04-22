@@ -70,6 +70,7 @@ class FluxSurface;
 class LayoutSimThread;
 struct sim_params;
 struct ST_System;
+class STSimThread;
 typedef std::vector<FluxSurface> FluxSurfaces;
 typedef std::vector<Heliostat*> Hvector;
 typedef std::vector<Receiver*> Rvector;
@@ -215,6 +216,14 @@ public:
 	void SetThreadCount(int nthreads);
 };
 
+//Class for SolTrace simulation control variables.
+class STSimControl
+{
+public:
+	STSimThread* _stthread;
+	ST_System* _STSim;
+};
+
 //Classes for collecting and processing simulation results
 class stat_object
 {
@@ -345,6 +354,8 @@ namespace interop
 #endif
 	void UpdateMapLayoutData(var_map& V, Hvector* helios);
 	bool HermiteFluxSimulationHandler(sim_results& results, SolarField& SF, Hvector& helios);
+	bool SolTraceFluxSimulation(SimControl& SimC, STSimControl& STSimC, SolarField& SF, var_map& vset, Hvector& helios);
+	bool SolTraceFluxBinning(STSimControl& STSimC, SolarField& SF);
 	bool DoManagedLayout(SimControl& SimC, SolarField& SF, var_map& V, LayoutSimThread* simthread);
 	void CreateResultsTable(sim_result& result, grid_emulator_base& table);
 };
