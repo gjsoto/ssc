@@ -220,6 +220,12 @@ public:
 	SimControl();
 
 	void SetThreadCount(int nthreads);
+	int (*soltrace_callback)(st_uint_t, st_uint_t, st_uint_t, st_uint_t, st_uint_t, void*);
+	void* soltrace_callback_data;
+
+	int (*message_callback)(const char*, void*);
+	void* message_callback_data;
+
 };
 
 //Classes for collecting and processing simulation results
@@ -352,7 +358,7 @@ namespace interop
 #endif
 	void UpdateMapLayoutData(var_map& V, Hvector* helios);
 	bool HermiteFluxSimulationHandler(sim_results& results, SolarField& SF, Hvector& helios);
-	bool SolTraceFluxSimulation(SimControl& SimC, SolarField& SF, var_map& vset, Hvector& helios);
+	bool SolTraceFluxSimulation(SimControl& SimC, sim_results& results, SolarField& SF, var_map& vset, Hvector& helios);
 	bool SolTraceFluxBinning(SimControl& STSimC, SolarField& SF);
 	bool DoManagedLayout(SimControl& SimC, SolarField& SF, var_map& V, LayoutSimThread* simthread);
 	void CreateResultsTable(sim_result& result, grid_emulator_base& table);

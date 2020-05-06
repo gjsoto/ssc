@@ -11,11 +11,10 @@ static void EditorOutput(const char *msg)
     //SPFrame::Instance().ScriptMessageOutput(msg);
 }
 
-//static void APICallback(simulation_info* s, void* data)
-//{
-//
-//    python_callback(void*, sp_data_t*, ...)
-//}
+extern int ST_APICallback(st_uint_t ntracedtotal, st_uint_t ntraced, st_uint_t ntotrace, st_uint_t curstage, st_uint_t nstages, void* data);
+
+extern int MessageHandler(const char* message, void* data);
+
 
 struct api_helper
 {
@@ -26,9 +25,10 @@ struct api_helper
     SimControl sim_control;
     std::vector<std::string> message_log;
 
+    int (*external_callback)(sp_number_t fraction_complete, const char* notices);
+
 
     //bool (*soltrace_callback)(st_uint_t ntracedtotal, st_uint_t ntraced, st_uint_t ntotrace, st_uint_t curstage, st_uint_t nstages, void* data);
-    bool (*soltrace_callback)(st_uint_t, st_uint_t, st_uint_t, st_uint_t, st_uint_t, void*);
 
     api_helper()
     {
@@ -37,6 +37,11 @@ struct api_helper
         results.clear();
         simthread = 0;
         //solarfield.getSimInfoObject()->setCallbackFunction()
+        sim_control.soltrace_callback = ST_APICallback;
+        sim_control.soltrace_callback_data = this;
+        sim_control.message_callback = MessageHandler;
+        sim_control.message_callback_data = this;
+
     };
 };
 
@@ -353,7 +358,7 @@ SPEXPORT int sp_add_receiver(sp_data_t p_data, const char* receiver_name)
     if (dupe)
     {
         throw std::runtime_error("Please enter a unique name for this geometry.");
-        return;
+        return 0;
     }
 
     //Add a receiver
@@ -420,7 +425,7 @@ SPEXPORT int sp_add_heliostat_template(sp_data_t p_data, const char* heliostat_n
     if (dupe)
     {
         throw std::runtime_error("Please enter a unique name for this heliostat template.");
-        return;
+        return 0;
     }
 
     int ind = V->hels.size();
@@ -453,16 +458,19 @@ SPEXPORT int sp_drop_heliostat_template(sp_data_t p_data, const char* heliostat_
             //delete the item
             V->drop_heliostat(V->hels.at(i).id.val);
             mc->solarfield.Create(*V);
-            return 1.;
+            return 1;
         }
     }
 
-    return 0.;
+    return 0;
 }
 
 SPEXPORT int sp_update_geometry(sp_data_t p_data)
 {
-    /*	Refresh the solar field, receiver, or ambient condition settings based on the current parameter settings.	Returns: (void):boolean    */
+    /*
+	Refresh the solar field, receiver, or ambient condition settings based on the current parameter settings.
+	Returns: (void):boolean
+    */
 
     api_helper *mc = static_cast<api_helper*>(p_data);
     var_map* V = &mc->variables;
@@ -473,7 +481,7 @@ SPEXPORT int sp_update_geometry(sp_data_t p_data)
         //no layout exists, so we should be calling the 'run_layout' method instead
         std::runtime_error("No layout exists, so the 'update_geometry' function cannot be executed. Please first create or import a layout using 'run_layout'.");
         //cxt.result().assign(0.);
-        return 0.;
+        return 0;
     }
 
     std::string weatherfile_str = std::string(V->amb.weather_file.val);
@@ -482,7 +490,7 @@ SPEXPORT int sp_update_geometry(sp_data_t p_data)
     
     //Saving local verison of weather data
     weatherfile wf;
-    if (!wf.open(weatherfile_str)) return; //error
+    if (!wf.open(weatherfile_str)) return 0; //error
 
     //Update the weather data
     std::string linef = "%d,%d,%d,%.2f,%.1f,%.1f,%.1f";
@@ -519,7 +527,7 @@ SPEXPORT int sp_update_geometry(sp_data_t p_data)
         if (mc->solarfield.ErrCheck())
         {
             std::runtime_error("An error occurred when preparing the updated field geometry in the call 'update_geometry'.");
-            return 0.;
+            return 0;
         }
 
         SF->calcHeliostatArea();
@@ -534,25 +542,57 @@ SPEXPORT int sp_update_geometry(sp_data_t p_data)
         if (SF->ErrCheck())
         {
             std::runtime_error("An error occurred when preparing the updated field geometry in the call 'update_geometry'.");
-            return 0.;
+            return 0;
         }
     }
     catch (std::exception &e)
     {
         std::runtime_error("An error occurred when preparing the updated field geometry in the call 'update_geometry'. Error:\n");
         std::runtime_error(e.what());
-        return 0.;
+        return 0;
     }
     catch (...)
     {
         std::runtime_error("Unknown error when executing 'update_geometry'.");
-        return 0.;
+        return 0;
     }
 
-    return 1.;
+    return 1;
 }
 
-SPEXPORT bool sp_assign_layout(sp_data_t p_data, sp_number_t *pvalues, int nrows, int ncols, int nthreads = 0) //, bool save_detail = true)
+SPEXPORT bool sp_generate_layout(sp_data_t p_data, int nthreads = 0) //, bool save_detail = true)
+{
+    /*
+    Create a solar field layout. Options include 'nthreads':integer (default All),'save_detail':boolean (default True)",
+    run layout without specified positions SolarPILOT generates layout positions ([table:options])
+    Returns: boolean
+        
+    */
+
+    api_helper *mc = static_cast<api_helper*>(p_data);
+    var_map* V = &mc->variables;
+    SolarField* SF = &mc->solarfield;
+
+    SimControl* SC = &mc->sim_control;
+    LayoutSimThread* SThread = mc->simthread;
+
+    if (nthreads!=0)
+        SC->SetThreadCount(nthreads);    
+
+    Ambient* A = SF->getAmbientObject();
+    A->readWeatherFile(*V);
+
+    //TODO:Is this needed?  I dont think so. It updates Design page in UI
+    //F.UpdateDesignSelect(V->sf.des_sim_detail.mapval(), *V);
+
+    SF->Clean();
+    SF->Create(*V);
+    bool simok = interop::DoManagedLayout(*SC, *SF, *V, SThread);        //Returns TRUE if successful
+
+    return simok;
+}
+
+SPEXPORT bool sp_assign_layout(sp_data_t p_data, sp_number_t* pvalues, int nrows, int ncols, int nthreads = 0) //, bool save_detail = true)
 {
     /*
     Run layout with specified positions. User specifies layout positions in the following format, where first 4 columns are required:
@@ -590,39 +630,6 @@ SPEXPORT bool sp_assign_layout(sp_data_t p_data, sp_number_t *pvalues, int nrows
     return simok;
 }
 
-
-SPEXPORT bool sp_generate_layout(sp_data_t p_data, int nthreads = 0) //, bool save_detail = true)
-{
-    /*
-    Create a solar field layout. Options include 'nthreads':integer (default All),'save_detail':boolean (default True)",
-    run layout without specified positions SolarPILOT generates layout positions ([table:options])
-    Returns: boolean
-        
-    */
-
-    api_helper *mc = static_cast<api_helper*>(p_data);
-    var_map* V = &mc->variables;
-    SolarField* SF = &mc->solarfield;
-
-    SimControl* SC = &mc->sim_control;
-    LayoutSimThread* SThread = mc->simthread;
-
-    if (nthreads!=0)
-        SC->SetThreadCount(nthreads);    
-
-    Ambient* A = SF->getAmbientObject();
-    A->readWeatherFile(*V);
-
-    //TODO:Is this needed?  I dont think so. It updates Design page in UI
-    //F.UpdateDesignSelect(V->sf.des_sim_detail.mapval(), *V);
-
-    SF->Clean();
-    SF->Create(*V);
-    bool simok = interop::DoManagedLayout(*SC, *SF, *V, SThread);        //Returns TRUE if successful
-
-    return simok;
-}
-
 SPEXPORT bool sp_get_layout_info(sp_data_t p_data, sp_number_t *layoutinfo, int* nhelio, int* ncol)
 {
     /*
@@ -632,6 +639,7 @@ SPEXPORT bool sp_get_layout_info(sp_data_t p_data, sp_number_t *layoutinfo, int*
     */
     api_helper* mc = static_cast<api_helper*>(p_data);
     //var_map* V = &mc->variables;
+    SimControl* SC = &mc->sim_control;
 
     SolarField* SF = &mc->solarfield;
     Hvector* hels = SF->getHeliostats();
@@ -657,7 +665,8 @@ SPEXPORT bool sp_get_layout_info(sp_data_t p_data, sp_number_t *layoutinfo, int*
 
         if ((i == 0) && (c != *ncol - 1))
         {
-            std::runtime_error("Information was lost check sp_get_layout_info output formating.");
+            SC->message_callback("Information was lost check sp_get_layout_info output formating.", SC->message_callback_data);
+            //std::runtime_error("Information was lost check sp_get_layout_info output formating.");
         }
     }
 
@@ -716,9 +725,7 @@ SPEXPORT bool sp_simulate(sp_data_t p_data, int nthreads = 1, bool save_detail =
         ok = interop::HermiteFluxSimulationHandler(*res, *SF, *helios);
         break;
     case var_fluxsim::FLUX_MODEL::SOLTRACE:
-        //ok = F.SolTraceFluxSimulation(*SF, *V, *helios);
-        std::runtime_error("SOLTRACE is currently not supported in API.");
-        //TODO: Move SolTraceFluxSimulation to interop -> Requires multi-threading
+        ok = interop::SolTraceFluxSimulation(*SC, *res, *SF, *V, *helios);
         break;
     default:
         ok = false;
@@ -727,6 +734,8 @@ SPEXPORT bool sp_simulate(sp_data_t p_data, int nthreads = 1, bool save_detail =
 
     //F.StopSimTimer();
     duration = (std::clock() - start) / (double)CLOCKS_PER_SEC;
+    std::string msg = "Simulation total time:" + std::to_string(duration) + " seconds";
+    SC->message_callback(msg.c_str(), SC->message_callback_data);
     // TODO: where does this need to be stored?
         // Based on an inital look through, the time appears only on GUI. 
 
@@ -861,8 +870,7 @@ SPEXPORT bool sp_detail_results(sp_data_t p_data, sp_number_t* ret, int* nrows, 
 
     api_helper *mc = static_cast<api_helper*>(p_data);
     SolarField* SF = &mc->solarfield;
-
-    std::vector<double>* ret;   //return vector
+    SimControl* SC = &mc->sim_control;
 
     if (SF->getHeliostats()->size() > 0)
     {
@@ -936,7 +944,8 @@ SPEXPORT bool sp_detail_results(sp_data_t p_data, sp_number_t* ret, int* nrows, 
 
             if ((i == 0) && (c != *ncols - 1))
             {
-                std::runtime_error("Information was lost check sp_detail_results output formating.");
+                SC->message_callback("Information was lost check sp_detail_results output formating.", SC->message_callback_data);
+                //std::runtime_error("Information was lost check sp_detail_results output formating.");
             }
         }
 
@@ -1019,6 +1028,7 @@ SPEXPORT bool sp_get_fluxmap(sp_data_t p_data, sp_number_t* fluxmap, int* nrows,
     return true;
 }
 
+
 //TODO: Skipped this function initially 
 SPEXPORT void sp_optimize(sp_data_t p_data, sp_number_t* pvalues, int nvar)
 {
@@ -1034,212 +1044,212 @@ SPEXPORT void sp_optimize(sp_data_t p_data, sp_number_t* pvalues, int nvar)
     Returns: table
     */
 
-    api_helper *mc = static_cast<api_helper*>(p_data);
-    var_map* V = &mc->variables;
-
-    //get the variable table
-    if (cxt.arg_count() < 1 || cxt.arg(0).type() != lk::vardata_t::VECTOR)
-        return;
-
-    lk::vardata_t &vartab = cxt.arg(0);
-
-    std::stringstream heliodata;
-
-    size_t nvars = nvar;
-    for (size_t i = 0; i < nvars; i++)
-    {
-        for (size_t j = 0; j < 12; j++)
-        {
-            if (j > ncols - 1)
-                heliodata << "NULL";
-            else
-                heliodata << pvalues[j + ncols * i];
-            heliodata << (j < 11 ? "," : ";");
-        }
-
-    }
-    V->sf.layout_data.val = heliodata.str();
-
-
-    //set up options, if provided
-    if (cxt.arg_count() == 2)
-    {
-        //maxiterations/tolerance/defaultstep/powerpenalty/nthreads
-
-        lk::varhash_t *opthash = cxt.arg(1).hash();
-
-        if (opthash->find("nthreads") != opthash->end())
-            F.SetThreadCount(opthash->at("nthreads")->as_integer());
-
-        if (opthash->find("maxiterations") != opthash->end())
-            V->opt.max_iter.val = opthash->at("maxiterations")->as_integer();
-
-        if (opthash->find("tolerance") != opthash->end())
-            V->opt.converge_tol.val = opthash->at("tolerance")->as_number();
-
-        if (opthash->find("defaultstep") != opthash->end())
-            V->opt.max_step.val = opthash->at("defaultstep")->as_number();
-
-        if (opthash->find("powerpenalty") != opthash->end())
-            V->opt.power_penalty.val = opthash->at("powerpenalty")->as_number();
-    }
-
-    //set up variables
-    int nv = vartab.vec()->size();
-    vector<double*> optvars(nv);
-    vector<double> upper(nv);
-    vector<double> lower(nv);
-    vector<double> stepsize(nv);
-    vector<string> names(nv);
-
-    for (size_t i = 0; i < nv; i++)
-    {
-        //check that the specified variable names exist
-        std::string varname = vartab.vec()->at(i).hash()->at("variable")->as_string();
-
-        if (V->_varptrs.find(varname) == V->_varptrs.end())
-            throw lk::error_t("Specified variable does not exist: " + varname);
-
-        //handle the variable
-        if (V->_varptrs.at(varname)->dattype != SP_DATTYPE::SP_DOUBLE)
-            throw lk::error_t("Optimized variable must be of type 'double'; discrete or boolean variables are not supported. Variable: " + varname);
-
-        spvar<double> *varptr = static_cast<spvar<double>*>(V->_varptrs.at(varname));
-        optvars.at(i) = &varptr->val;
-        vector<string> namedat = split(varname, ".");
-        names.at(i) = namedat.back();
-
-        lk::varhash_t *varhash = vartab.vec()->at(i).hash();
-
-        //bounds
-        if (varhash->find("lowbound") == varhash->end())
-            lower.at(i) = -HUGE_VAL;
-        else
-            lower.at(i) = varhash->at("lowbound")->as_number();
-
-        if (varhash->find("upbound") == varhash->end())
-            upper.at(i) = HUGE_VAL;
-        else
-            upper.at(i) = varhash->at("upbound")->as_number();
-
-        if (varhash->find("initial") != varhash->end())
-            varptr->val = varhash->at("initial")->as_number();
-
-        if (varhash->find("step") == varhash->end())
-            stepsize.at(i) = V->opt.max_step.val * varptr->val;
-        else
-            stepsize.at(i) = varhash->at("step")->as_number();
-
-    }
-
-    int n_threads = F.GetThreadCount();
-    ArrayString *local_wfdat = F.GetLocalWeatherDataObject();
-    lk::vardata_t iter_vec;
-    std::vector< double > obj_vals;
-    std::vector< std::vector<double> > flux_vals;
-    std::vector< std::vector< double > > eval_points;
-
-    if (n_threads > 1)
-    {
-        AutoPilot_MT *SFopt_MT = new AutoPilot_MT();
-
-        SFopt_MT->SetSummaryCallback(LKInfoCallback, SF->getSimInfoObject()->getCallbackData());
-
-        //set up the weather data for simulation
-        vector<string> wdata;
-        for (int i = 0; i < local_wfdat->size(); i++)
-            wdata.push_back(local_wfdat->at(i));
-        SFopt_MT->GenerateDesignPointSimulations(*V, wdata);
-
-        //Do the expert setup
-        SFopt_MT->Setup(*V, true);
-
-        //run the optimization
-        SFopt_MT->Optimize(optvars, upper, lower, stepsize, &names);
-
-        //get resulting info
-        SFopt_MT->GetOptimizationObject()->getOptimizationSimulationHistory(eval_points, obj_vals, flux_vals);
-
-        try
-        {
-            delete SFopt_MT;
-        }
-        catch (...)
-        {
-        }
-    }
-    else
-    {
-
-        AutoPilot_S *SFopt_S = new AutoPilot_S();
-        SFopt_S->SetSummaryCallback(LKInfoCallback, SF->getSimInfoObject()->getCallbackData());
-
-        //set up the weather data for simulation
-        vector<string> wdata;
-        for (int i = 0; i < local_wfdat->size(); i++)
-            wdata.push_back(local_wfdat->at(i));
-        SFopt_S->GenerateDesignPointSimulations(*V, wdata);
-
-        //Do the expert setup
-        SFopt_S->Setup(*V, true);
-
-        //run the optimization
-        SFopt_S->Optimize(optvars, upper, lower, stepsize, &names);
-
-        //get resulting info
-        SFopt_S->GetOptimizationObject()->getOptimizationSimulationHistory(eval_points, obj_vals, flux_vals);
-
-
-        try
-        {
-            delete SFopt_S;
-        }
-        catch (...)
-        {
-        }
-    }
-
-
-    //set up return structure
-    //result/objective/flux/iterations
-    cxt.result().empty_hash();
-
-    lk::vardata_t res_hash;
-    res_hash.empty_hash();
-
-    for (size_t i = 0; i < optvars.size(); i++)
-    {
-        std::string varname = vartab.vec()->at(i).hash()->at("variable")->as_string();
-        spvar<double> *varptr = static_cast<spvar<double>*>(V->_varptrs.at(varname));
-        res_hash.hash_item(varname, varptr->val);
-    }
-
-    cxt.result().hash_item("result", res_hash);
-
-    iter_vec.empty_vector();
-
-    for (size_t i = 0; i < flux_vals.size(); i++)
-    {
-        iter_vec.vec()->push_back(lk::vardata_t());
-        iter_vec.vec()->at(i).empty_vector();
-        for (size_t j = 0; j < eval_points.front().size(); j++)
-        {
-            iter_vec.vec()->at(i).vec_append(eval_points.at(i).at(j));
-        }
-        iter_vec.vec()->at(i).vec_append(obj_vals.at(i));
-        for (size_t j = 0; j < flux_vals.front().size(); j++)
-            iter_vec.vec()->at(i).vec_append(flux_vals.at(i).at(j));
-    }
-
-    lk::vardata_t fluxresult;
-    fluxresult.empty_vector();
-    for (size_t j = 0; j < flux_vals.back().size(); j++)
-        fluxresult.vec_append(flux_vals.back().at(j));
-
-    cxt.result().hash_item("objective", obj_vals.back());
-    cxt.result().hash_item("flux", fluxresult);
-    cxt.result().hash_item("iterations", iter_vec);
-
+    //api_helper *mc = static_cast<api_helper*>(p_data);
+    //var_map* V = &mc->variables;
+    //
+    ////get the variable table
+    //if (cxt.arg_count() < 1 || cxt.arg(0).type() != lk::vardata_t::VECTOR)
+    //    return;
+    //
+    //lk::vardata_t &vartab = cxt.arg(0);
+    //
+    //std::stringstream heliodata;
+    //
+    //size_t nvars = nvar;
+    //for (size_t i = 0; i < nvars; i++)
+    //{
+    //    for (size_t j = 0; j < 12; j++)
+    //    {
+    //        if (j > ncols - 1)
+    //            heliodata << "NULL";
+    //        else
+    //            heliodata << pvalues[j + ncols * i];
+    //        heliodata << (j < 11 ? "," : ";");
+    //    }
+    //
+    //}
+    //V->sf.layout_data.val = heliodata.str();
+    //
+    //
+    ////set up options, if provided
+    //if (cxt.arg_count() == 2)
+    //{
+    //    //maxiterations/tolerance/defaultstep/powerpenalty/nthreads
+    //
+    //    lk::varhash_t *opthash = cxt.arg(1).hash();
+    //
+    //    if (opthash->find("nthreads") != opthash->end())
+    //        F.SetThreadCount(opthash->at("nthreads")->as_integer());
+    //
+    //    if (opthash->find("maxiterations") != opthash->end())
+    //        V->opt.max_iter.val = opthash->at("maxiterations")->as_integer();
+    //
+    //    if (opthash->find("tolerance") != opthash->end())
+    //        V->opt.converge_tol.val = opthash->at("tolerance")->as_number();
+    //
+    //    if (opthash->find("defaultstep") != opthash->end())
+    //        V->opt.max_step.val = opthash->at("defaultstep")->as_number();
+    //
+    //    if (opthash->find("powerpenalty") != opthash->end())
+    //        V->opt.power_penalty.val = opthash->at("powerpenalty")->as_number();
+    //}
+    //
+    ////set up variables
+    //int nv = vartab.vec()->size();
+    //vector<double*> optvars(nv);
+    //vector<double> upper(nv);
+    //vector<double> lower(nv);
+    //vector<double> stepsize(nv);
+    //vector<string> names(nv);
+    //
+    //for (size_t i = 0; i < nv; i++)
+    //{
+    //    //check that the specified variable names exist
+    //    std::string varname = vartab.vec()->at(i).hash()->at("variable")->as_string();
+    //
+    //    if (V->_varptrs.find(varname) == V->_varptrs.end())
+    //        throw lk::error_t("Specified variable does not exist: " + varname);
+    //
+    //    //handle the variable
+    //    if (V->_varptrs.at(varname)->dattype != SP_DATTYPE::SP_DOUBLE)
+    //        throw lk::error_t("Optimized variable must be of type 'double'; discrete or boolean variables are not supported. Variable: " + varname);
+    //
+    //    spvar<double> *varptr = static_cast<spvar<double>*>(V->_varptrs.at(varname));
+    //    optvars.at(i) = &varptr->val;
+    //    vector<string> namedat = split(varname, ".");
+    //    names.at(i) = namedat.back();
+    //
+    //    lk::varhash_t *varhash = vartab.vec()->at(i).hash();
+    //
+    //    //bounds
+    //    if (varhash->find("lowbound") == varhash->end())
+    //        lower.at(i) = -HUGE_VAL;
+    //    else
+    //        lower.at(i) = varhash->at("lowbound")->as_number();
+    //
+    //    if (varhash->find("upbound") == varhash->end())
+    //        upper.at(i) = HUGE_VAL;
+    //    else
+    //        upper.at(i) = varhash->at("upbound")->as_number();
+    //
+    //    if (varhash->find("initial") != varhash->end())
+    //        varptr->val = varhash->at("initial")->as_number();
+    //
+    //    if (varhash->find("step") == varhash->end())
+    //        stepsize.at(i) = V->opt.max_step.val * varptr->val;
+    //    else
+    //        stepsize.at(i) = varhash->at("step")->as_number();
+    //
+    //}
+    //
+    //int n_threads = F.GetThreadCount();
+    //ArrayString *local_wfdat = F.GetLocalWeatherDataObject();
+    //lk::vardata_t iter_vec;
+    //std::vector< double > obj_vals;
+    //std::vector< std::vector<double> > flux_vals;
+    //std::vector< std::vector< double > > eval_points;
+    //
+    //if (n_threads > 1)
+    //{
+    //    AutoPilot_MT *SFopt_MT = new AutoPilot_MT();
+    //
+    //    SFopt_MT->SetSummaryCallback(LKInfoCallback, SF->getSimInfoObject()->getCallbackData());
+    //
+    //    //set up the weather data for simulation
+    //    vector<string> wdata;
+    //    for (int i = 0; i < local_wfdat->size(); i++)
+    //        wdata.push_back(local_wfdat->at(i));
+    //    SFopt_MT->GenerateDesignPointSimulations(*V, wdata);
+    //
+    //    //Do the expert setup
+    //    SFopt_MT->Setup(*V, true);
+    //
+    //    //run the optimization
+    //    SFopt_MT->Optimize(optvars, upper, lower, stepsize, &names);
+    //
+    //    //get resulting info
+    //    SFopt_MT->GetOptimizationObject()->getOptimizationSimulationHistory(eval_points, obj_vals, flux_vals);
+    //
+    //    try
+    //    {
+    //        delete SFopt_MT;
+    //    }
+    //    catch (...)
+    //    {
+    //    }
+    //}
+    //else
+    //{
+    //
+    //    AutoPilot_S *SFopt_S = new AutoPilot_S();
+    //    SFopt_S->SetSummaryCallback(LKInfoCallback, SF->getSimInfoObject()->getCallbackData());
+    //
+    //    //set up the weather data for simulation
+    //    vector<string> wdata;
+    //    for (int i = 0; i < local_wfdat->size(); i++)
+    //        wdata.push_back(local_wfdat->at(i));
+    //    SFopt_S->GenerateDesignPointSimulations(*V, wdata);
+    //
+    //    //Do the expert setup
+    //    SFopt_S->Setup(*V, true);
+    //
+    //    //run the optimization
+    //    SFopt_S->Optimize(optvars, upper, lower, stepsize, &names);
+    //
+    //    //get resulting info
+    //    SFopt_S->GetOptimizationObject()->getOptimizationSimulationHistory(eval_points, obj_vals, flux_vals);
+    //
+    //
+    //    try
+    //    {
+    //        delete SFopt_S;
+    //    }
+    //    catch (...)
+    //    {
+    //    }
+    //}
+    //
+    //
+    ////set up return structure
+    ////result/objective/flux/iterations
+    //cxt.result().empty_hash();
+    //
+    //lk::vardata_t res_hash;
+    //res_hash.empty_hash();
+    //
+    //for (size_t i = 0; i < optvars.size(); i++)
+    //{
+    //    std::string varname = vartab.vec()->at(i).hash()->at("variable")->as_string();
+    //    spvar<double> *varptr = static_cast<spvar<double>*>(V->_varptrs.at(varname));
+    //    res_hash.hash_item(varname, varptr->val);
+    //}
+    //
+    //cxt.result().hash_item("result", res_hash);
+    //
+    //iter_vec.empty_vector();
+    //
+    //for (size_t i = 0; i < flux_vals.size(); i++)
+    //{
+    //    iter_vec.vec()->push_back(lk::vardata_t());
+    //    iter_vec.vec()->at(i).empty_vector();
+    //    for (size_t j = 0; j < eval_points.front().size(); j++)
+    //    {
+    //        iter_vec.vec()->at(i).vec_append(eval_points.at(i).at(j));
+    //    }
+    //    iter_vec.vec()->at(i).vec_append(obj_vals.at(i));
+    //    for (size_t j = 0; j < flux_vals.front().size(); j++)
+    //        iter_vec.vec()->at(i).vec_append(flux_vals.at(i).at(j));
+    //}
+    //
+    //lk::vardata_t fluxresult;
+    //fluxresult.empty_vector();
+    //for (size_t j = 0; j < flux_vals.back().size(); j++)
+    //    fluxresult.vec_append(flux_vals.back().at(j));
+    //
+    //cxt.result().hash_item("objective", obj_vals.back());
+    //cxt.result().hash_item("flux", fluxresult);
+    //cxt.result().hash_item("iterations", iter_vec);
+    //
 }
 
 SPEXPORT void sp_clear_land(sp_data_t p_data, const char* type = NULL)
@@ -1349,6 +1359,7 @@ SPEXPORT bool sp_heliostats_by_region(sp_data_t p_data, sp_number_t* retvec, int
     api_helper* mc = static_cast<api_helper*>(p_data);
     SolarField* SF = &mc->solarfield;
     Hvector *helios = SF->getHeliostats();
+    SimControl* SC = &mc->sim_control;
 
     //which coordinate system?
     std::string system = (std::string) coor_sys;
@@ -1480,7 +1491,11 @@ SPEXPORT bool sp_heliostats_by_region(sp_data_t p_data, sp_number_t* retvec, int
         {
 
             if (!ioutil::file_exists(svgfname_data))
-                throw std::runtime_error("Invalid SVG file - not found.");
+            {
+                SC->message_callback("Invalid SVG file - not found.", SC->message_callback_data);
+                return false;
+                //throw std::runtime_error("Invalid SVG file - not found.");
+            }
 
             if (svg_opt_tab != NULL)
             {
@@ -1532,7 +1547,8 @@ SPEXPORT bool sp_heliostats_by_region(sp_data_t p_data, sp_number_t* retvec, int
         {
             //get the string data and break it up into units
             if (svgfname_data == NULL)
-                std::runtime_error("svg data must be provided for the svg option.");
+                SC->message_callback("svg data must be provided for the svg option.", SC->message_callback_data);
+                //std::runtime_error("svg data must be provided for the svg option.");
             std::string data = (std::string) svgfname_data;
             entries = split(data, ";");
             scale_s = split(entries.front(), " ");
@@ -1588,7 +1604,9 @@ SPEXPORT bool sp_heliostats_by_region(sp_data_t p_data, sp_number_t* retvec, int
     }
     else
     {
-        throw std::runtime_error("invalid region type specified. Expecting one of [cylindrical, cartesian, polygon]");
+        SC->message_callback("invalid region type specified. Expecting one of [cylindrical, cartesian, polygon]", SC->message_callback_data);
+        //throw std::runtime_error("invalid region type specified. Expecting one of [cylindrical, cartesian, polygon]");
+        return false;
     }
     // pass back size of return vector and vector values
     *lenret = ret->size();
@@ -1615,6 +1633,7 @@ SPEXPORT bool sp_modify_heliostats(sp_data_t p_data, sp_number_t* helio_data, in
     ///TODO: UPDATE this function with new methodology 
     api_helper *mc = static_cast<api_helper*>(p_data);
     SolarField* SF = &mc->solarfield;
+    SimControl* SC = &mc->sim_control;
     
     if (SF->getHeliostats()->size() < 1)
         return false;
@@ -1644,7 +1663,12 @@ SPEXPORT bool sp_modify_heliostats(sp_data_t p_data, sp_number_t* helio_data, in
     for (size_t i = 0; i < vars.size(); i++)
     {
         if (std::find(attrs.begin(), attrs.end(), vars.at(i)) == attrs.end())
-            throw std::runtime_error("Invalid attribute specified: " + vars.at(i));
+        {
+            std::string msg = "Invalid attribute specified: " + vars.at(i);
+            SC->message_callback(msg.c_str(), SC->message_callback_data);
+            //throw std::runtime_error("Invalid attribute specified: " + vars.at(i));
+            return false;
+        }
 
         datamap[vars.at(i)].clear();
         for (size_t h = 0; h < (*nhel); h++)
@@ -1673,12 +1697,6 @@ SPEXPORT bool sp_modify_heliostats(sp_data_t p_data, sp_number_t* helio_data, in
 
     //locations need to be modified through the layout shell object
     layout_shell* layout = SF->getLayoutShellObject();
-
-    /*
-    //make sure the heliostat ID's array is the same length as the location array
-    if (locvec->size() != helios.size())
-        throw std::runtime_error("The number of locations provided does not match the number of heliostat ID's provided.");
-    */
 
     //assign location(s)
     layout->clear();
@@ -1824,6 +1842,7 @@ SPEXPORT bool sp_dump_varmap(sp_data_t p_data, const char* sp_fname)
     */
     api_helper* mc = static_cast<api_helper*>(p_data);
     var_map* V = &mc->variables;
+    SimControl* SC = &mc->sim_control;
 
     //valid path?
     std::string fname(sp_fname);
@@ -1889,9 +1908,35 @@ SPEXPORT bool sp_dump_varmap(sp_data_t p_data, const char* sp_fname)
     }
     catch (std::exception &e)
     {
-        std::runtime_error(e.what());
+        SC->message_callback(e.what(), SC->message_callback_data);
+        //std::runtime_error(e.what());
     }
     return false;
 }
 
+
+int ST_APICallback(st_uint_t ntracedtotal, st_uint_t ntraced, st_uint_t ntotrace, st_uint_t curstage, st_uint_t nstages, void* data)
+{
+    /* 
+    
+    return 1 if ok, return 0 to kill soltrace simulation
+    */
+    api_helper* api= static_cast<api_helper*>(data);
+
+    std::string messages = join(api->message_log, "\n");
+    api->message_log.clear();
+    
+    return api->external_callback((sp_number_t)((double)ntraced / (double)(std::max((int)ntracedtotal, 1))), messages.c_str());
+};
+
+int MessageHandler(const char* message, void* data)
+{
+    api_helper* api = static_cast<api_helper*>(data);
+
+    //std::string mymessage(message);
+    //api->message_log.push_back(mymessage);
+
+    api->external_callback(0., message);
+    return 1;
+}
 

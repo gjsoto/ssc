@@ -785,7 +785,7 @@ bool interop::HermiteFluxSimulationHandler(sim_results& results, SolarField& SF,
 }
 
 //TODO: Transfer over all function calls to new function definition
-bool interop::SolTraceFluxSimulation(SimControl& SimC, SolarField& SF, var_map& vset, Hvector& helios)
+bool interop::SolTraceFluxSimulation(SimControl& SimC, sim_results& results, SolarField& SF, var_map& vset, Hvector& helios)
 {
 	/*
 	Send geometry to Soltrace and get back simulation results.
@@ -806,6 +806,9 @@ bool interop::SolTraceFluxSimulation(SimControl& SimC, SolarField& SF, var_map& 
 
 	*/
 
+
+	//No longer supported
+	/* CHECK:
 	bool is_load_raydata = vset.flux.is_load_raydata.val;
 	bool is_save_raydata = vset.flux.is_save_raydata.val;
 	//raydata_file
@@ -946,6 +949,7 @@ bool interop::SolTraceFluxSimulation(SimControl& SimC, SolarField& SF, var_map& 
 		if (!ioutil::dir_exists(raydata_file.substr(0, raydata_file.find_last_of("\\/")).c_str()))
 			raydata_file = _working_dir.GetPath(true) + raydata_file.GetName();
 	}
+	*/
 
 	bool err_maxray = false;
 	int minrays, maxrays;
@@ -985,8 +989,10 @@ bool interop::SolTraceFluxSimulation(SimControl& SimC, SolarField& SF, var_map& 
 			//get random seed
 			int seed = SF.getFluxObject()->getRandomObject()->integer();
 			//setup the thread
-			SimC._stthread[i].Setup(pcxt, i, seed, is_load_raydata, is_save_raydata);
+			SimC._stthread[i].Setup(pcxt, i, seed);
 
+			//SimC._stthread[i].Setup(pcxt, i, seed, is_load_raydata, is_save_raydata);
+			/* CHECK:
 			//Decide how many rays to trace for each thread. Evenly divide and allocate remainder to thread 0
 			int rays_this_thread = SimC._STSim->sim_raycount / SimC._n_threads;
 			if (i == 0) rays_this_thread += (SimC._STSim->sim_raycount % SimC._n_threads);
@@ -1002,9 +1008,9 @@ bool interop::SolTraceFluxSimulation(SimControl& SimC, SolarField& SF, var_map& 
 			}
 			rays_alloc += rays_this_thread;
 			rays_alloc1 += rays_this_thread1;
-
+			
 			st_sim_params(pcxt, rays_this_thread, SimC._STSim->sim_raymax / SimC._n_threads);
-
+			*/
 		}
 
 		for (int i = 0; i < SimC._n_threads; i++)
@@ -1033,7 +1039,8 @@ bool interop::SolTraceFluxSimulation(SimControl& SimC, SolarField& SF, var_map& 
 				ntotaltraces += ntotal;
 			}
 
-			SolTraceProgressUpdate(ntotal, ntraced, ntotrace, stagenum, nstages, (void*)NULL);
+			//SolTraceProgressUpdate(ntotal, ntraced, ntotrace, stagenum, nstages, (void*)NULL);
+			SimC.soltrace_callback(ntotal, ntraced, ntotrace, stagenum, nstages, (void*)NULL);
 
 			// if dialog's cancel button was pressed, send cancel signal to all threads
 			if (SimC._cancel_simulation)
@@ -1056,12 +1063,13 @@ bool interop::SolTraceFluxSimulation(SimControl& SimC, SolarField& SF, var_map& 
 			{
 				errors_found = true;
 				err_maxray = true;
-				std::runtime_error("Error occured in trace core thread" + std::to_string(i + 1) + ", code=" + std::to_string(code) + ".\n\n");
-				//TODO: PopMessage(wxString::Format("Error occured in trace core thread %d, code=%d.\n\n", i + 1, code));
+				std::string msg("Error occured in trace core thread" + std::to_string(i + 1) + ", code=" + std::to_string(code) + ".\n\n");
+				SimC.message_callback(msg.c_str(), SimC.message_callback_data);
 				break;  //Don't keep displaying if there's an error
 			}
 		}
 
+		/* CHECK:
 		//Consolidate the stage 0 ray data if needed
 		if (is_save_raydata && !errors_found)
 		{
@@ -1071,6 +1079,7 @@ bool interop::SolTraceFluxSimulation(SimControl& SimC, SolarField& SF, var_map& 
 				st1datawrap.push_back(SimC._stthread[i].GetStage1RayDataObject());
 			}
 		}
+		*/
 
 	}
 	else
@@ -1079,28 +1088,42 @@ bool interop::SolTraceFluxSimulation(SimControl& SimC, SolarField& SF, var_map& 
 		st_context_t cxt = st_create_context();
 		int seed = SF.getFluxObject()->getRandomObject()->integer();
 		ST_System::LoadIntoContext(SimC._STSim, cxt);
-		if (interop::SolTraceFluxSimulation_ST(cxt, seed, *SimC._STSim, STCallback, this, &raydat_st0, &raydat_st1, is_save_raydata, is_load_raydata))
+
+		/*
+		Passes an optional pointer to a callback function that updates the GUI.
+		*/
+		int minrays = SimC._STSim->sim_raycount;
+		int maxrays = SimC._STSim->sim_raymax;
+
+		//simulate, setting the UI callback and a pointer to the UI class
+		st_sim_params(cxt, minrays, maxrays);
+		bool sim_result = st_sim_run(cxt, seed, true, SimC.soltrace_callback, SimC.soltrace_callback_data) != -1;
+		if(sim_result)
 			contexts.push_back(cxt);
 		else
 			err_maxray = true;  //hit max ray limit if function returns false
 
+		/* CHECK:
 		if (is_save_raydata && !err_maxray)
 		{
 			st0datawrap.push_back(&raydat_st0);
 			st1datawrap.push_back(&raydat_st1);
 		}
+		*/
 	}
 
 	//reset the progress gauge
 	SimC._is_mt_simulation = false;
-	_flux_gauge->SetValue(0);
+	//_flux_gauge->SetValue(0);
 	//Did the simulation terminate after reaching the max ray count?
 	if (err_maxray)
 	{
-		PopMessage("The simulation has reached the maximum number of rays (" + my_to_string(maxrays) +
+		std::string msg = "The simulation has reached the maximum number of rays (" + my_to_string(maxrays) +
 			") without achieving the required number of ray hits (" + my_to_string(minrays) + ")." +
 			" Consider increasing the 'Maximum number of generated rays' or decreasing the " +
-			" 'Desired number of ray intersections'.");
+			" 'Desired number of ray intersections'.";
+		SimC.message_callback( msg.c_str(), SimC.message_callback_data);
+
 		return false;
 	}
 	//Was the simulation cancelled during st_sim_run()?
@@ -1147,9 +1170,11 @@ bool interop::SolTraceFluxSimulation(SimControl& SimC, SolarField& SF, var_map& 
 	//DNI
 	double dni = vset.sf.dni_des.val / 1000.;    //[kw/m2]
 
+	/* CHECK:
 	//if the heliostat field ray data is loaded from a file, just specify the number of sun rays based on this value
 	if (is_load_raydata)
 		SimC._STSim->IntData.nsunrays = nsunrays_loadst;
+	*/
 
 	//Get bounding box and sun ray information to calculate power per ray
 	SimC._STSim->IntData.q_ray = (bounds[1] - bounds[0]) * (bounds[3] - bounds[2]) / float(SimC._STSim->IntData.nsunrays) * dni;
@@ -1171,9 +1196,10 @@ bool interop::SolTraceFluxSimulation(SimControl& SimC, SolarField& SF, var_map& 
 		sim_params P;
 		P.dni = dni;
 		double azzen[2] = { az, PI / 2. - el };
-		_results.back().process_raytrace_simulation(SF, P, 2, azzen, helios, SimC._STSim->IntData.q_ray, SimC._STSim->IntData.emap, SimC._STSim->IntData.smap, SimC._STSim->IntData.rnum, nint, bounds);
+		results.back().process_raytrace_simulation(SF, P, 2, azzen, helios, SimC._STSim->IntData.q_ray, SimC._STSim->IntData.emap, SimC._STSim->IntData.smap, SimC._STSim->IntData.rnum, nint, bounds);
 	}
 
+	/* CHECK:
 	//If the user wants to save stage0 ray data, do so here
 	if (is_save_raydata)
 	{
@@ -1206,6 +1232,7 @@ bool interop::SolTraceFluxSimulation(SimControl& SimC, SolarField& SF, var_map& 
 
 		fout.close();
 	}
+	*/
 
 	//If the user wants to save the ray data, do so here
 	if (vset.flux.save_data.val)
@@ -1213,14 +1240,14 @@ bool interop::SolTraceFluxSimulation(SimControl& SimC, SolarField& SF, var_map& 
 		string fname = vset.flux.save_data_loc.val;
 		if (fname == "")
 		{
-			PopMessage("Ray data was not saved. No file was specified.", "Notice", wxICON_EXCLAMATION | wxOK);
+			SimC.message_callback("Notice: Ray data was not saved. No file was specified.", SimC.message_callback_data);
 		}
 		else
 		{
 			FILE* file = fopen(fname.c_str(), "w");
 			if (!file)
 			{
-				PopMessage(wxT("Error opening the flux simulation output file. Please make sure the file is closed and the directory is not write-protected."), wxT("File error"), wxICON_ERROR | wxOK);
+				SimC.message_callback("File Error: Error opening the flux simulation output file. Please make sure the file is closed and the directory is not write-protected.", SimC.message_callback_data);
 				return false;
 			}
 			fprintf(file, "Pos X, Pos Y, Pos Z, Cos X, Cos Y, Cos Z, Element Map, Stage Map, Ray Number\n");
@@ -1402,7 +1429,7 @@ bool interop::DoManagedLayout(SimControl& SimC, SolarField& SF, var_map& V, Layo
 	//Make sure the solar field has been created
 	if (SF.getVarMap() == 0)
 	{
-		// TODO: PopMessage("The solar field Create() method must be called before generating the field layout.", "Error");
+		SimC.message_callback("Error: The solar field Create() method must be called before generating the field layout.", SimC.message_callback_data);
 		return false;
 	}
 
@@ -1517,9 +1544,8 @@ bool interop::DoManagedLayout(SimControl& SimC, SolarField& SF, var_map& V, Layo
 						errmsgs.append(simthread[i].GetSimMessages()->at(j) + "\n");
 				}
 				//Display error messages
-				//if (!errmsgs.empty())
-					//TODO: PopMessage(errmsgs, "SolarPILOT Simulation Error", wxOK | wxICON_ERROR);
-
+				if (!errmsgs.empty())
+					SimC.message_callback(errmsgs.c_str(), SimC.message_callback_data);
 			}
 
 			//Clean up dynamic memory
