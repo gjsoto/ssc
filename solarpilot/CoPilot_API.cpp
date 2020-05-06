@@ -24,7 +24,11 @@ struct api_helper
     sim_results results;
     LayoutSimThread* simthread;
     SimControl sim_control;
-    STSimControl STsim_control;
+    std::vector<std::string> message_log;
+
+
+    //bool (*soltrace_callback)(st_uint_t ntracedtotal, st_uint_t ntraced, st_uint_t ntotrace, st_uint_t curstage, st_uint_t nstages, void* data);
+    bool (*soltrace_callback)(st_uint_t, st_uint_t, st_uint_t, st_uint_t, st_uint_t, void*);
 
     api_helper()
     {
@@ -36,6 +40,12 @@ struct api_helper
     };
 };
 
+
+SPEXPORT void sp_cancel_simulation(sp_data_t p_data)
+{
+    api_helper* mc = static_cast<api_helper*>(p_data);
+    mc->sim_control._cancel_simulation = true;
+}
 
 SPEXPORT sp_data_t sp_data_create()
 {
@@ -1319,7 +1329,7 @@ SPEXPORT bool sp_add_land(sp_data_t p_data, const char* type, sp_number_t* polyg
 
 }
 
-SPEXPORT bool sp_heliostats_by_region(sp_data_t p_data, sp_number_t* retvec, int* lenret, const char* coor_sys, bool is_returnloc = false,
+SPEXPORT bool sp_heliostats_by_region(sp_data_t p_data, sp_number_t* retvec, int* lenret, const char* coor_sys,
                                                     sp_number_t* arguments = NULL, int* len_arg = NULL, 
                                                      const char* svgfname_data = NULL, sp_number_t* svg_opt_tab = NULL)
 {
@@ -1355,14 +1365,10 @@ SPEXPORT bool sp_heliostats_by_region(sp_data_t p_data, sp_number_t* retvec, int
     {
         for (size_t i = 0; i < helios->size(); i++)
         {
-            if (is_returnloc)
-            {
-                ret->push_back(helios->at(i)->getLocation()->x);
-                ret->push_back(helios->at(i)->getLocation()->y);
-                ret->push_back(helios->at(i)->getLocation()->z);
-            }
-            else
-                ret->push_back((double)helios->at(i)->getId());
+            ret->push_back((double)helios->at(i)->getId());
+            ret->push_back(helios->at(i)->getLocation()->x);
+            ret->push_back(helios->at(i)->getLocation()->y);
+            ret->push_back(helios->at(i)->getLocation()->z);
         }
     }
     else if (lower_case(system) == "cylindrical")
@@ -1385,14 +1391,12 @@ SPEXPORT bool sp_heliostats_by_region(sp_data_t p_data, sp_number_t* retvec, int
                 if (rpos < rmax)
                     if (apos > azmin)
                         if (apos < azmax)
-                            if (is_returnloc)
-                            {
-                                ret->push_back(helios->at(i)->getLocation()->x);
-                                ret->push_back(helios->at(i)->getLocation()->y);
-                                ret->push_back(helios->at(i)->getLocation()->z);
-                            }
-                            else
-                                ret->push_back((double)helios->at(i)->getId());
+                        {
+                            ret->push_back((double)helios->at(i)->getId());
+                            ret->push_back(helios->at(i)->getLocation()->x);
+                            ret->push_back(helios->at(i)->getLocation()->y);
+                            ret->push_back(helios->at(i)->getLocation()->z);
+                        }
         }
 
     }
@@ -1428,14 +1432,12 @@ SPEXPORT bool sp_heliostats_by_region(sp_data_t p_data, sp_number_t* retvec, int
                         if (loc->y < ymax)
                             if (loc->z > zmin)
                                 if (loc->z < zmax)
-                                    if (is_returnloc)
-                                    {
-                                        ret->push_back(helios->at(i)->getLocation()->x);
-                                        ret->push_back(helios->at(i)->getLocation()->y);
-                                        ret->push_back(helios->at(i)->getLocation()->z);
-                                    }
-                                    else
-                                        ret->push_back((double)helios->at(i)->getId());
+                                {
+                                    ret->push_back((double)helios->at(i)->getId());
+                                    ret->push_back(helios->at(i)->getLocation()->x);
+                                    ret->push_back(helios->at(i)->getLocation()->y);
+                                    ret->push_back(helios->at(i)->getLocation()->z);
+                                }
         }
     }
     else if (lower_case(system) == "polygon")
@@ -1450,14 +1452,12 @@ SPEXPORT bool sp_heliostats_by_region(sp_data_t p_data, sp_number_t* retvec, int
         for (size_t i = 0; i < helios->size(); i++)
         {
             if (Toolbox::pointInPolygon(polygon, *helios->at(i)->getLocation()))
-                if (is_returnloc)
-                {
-                    ret->push_back(helios->at(i)->getLocation()->x);
-                    ret->push_back(helios->at(i)->getLocation()->y);
-                    ret->push_back(helios->at(i)->getLocation()->z);
-                }
-                else
-                    ret->push_back((double)helios->at(i)->getId());
+            {
+                ret->push_back((double)helios->at(i)->getId());
+                ret->push_back(helios->at(i)->getLocation()->x);
+                ret->push_back(helios->at(i)->getLocation()->y);
+                ret->push_back(helios->at(i)->getLocation()->z);
+            }
         }
 
     }
@@ -1576,15 +1576,10 @@ SPEXPORT bool sp_heliostats_by_region(sp_data_t p_data, sp_number_t* retvec, int
 
                 if (Toolbox::pointInPolygon(*polygon, *loc))
                 {
-                    if (is_returnloc)
-                    {
-                        ret->push_back(loc->x);
-                        ret->push_back(loc->y);
-                        ret->push_back(loc->z);
-                    }
-                    else
-                        ret->push_back((double)helios->at(i)->getId());
-
+                    ret->push_back((double)helios->at(i)->getId());
+                    ret->push_back(loc->x);
+                    ret->push_back(loc->y);
+                    ret->push_back(loc->z);
                     //if included, don't need to check other polygons
                     break;
                 }
@@ -1617,25 +1612,47 @@ SPEXPORT bool sp_modify_heliostats(sp_data_t p_data, sp_number_t* helio_data, in
     Returns: none
     */
 
+    ///TODO: UPDATE this function with new methodology 
     api_helper *mc = static_cast<api_helper*>(p_data);
     SolarField* SF = &mc->solarfield;
     
     if (SF->getHeliostats()->size() < 1)
         return false;
 
-    //collect all relevant heliostat ID's
-    std::vector< int > hids;
-    std::vector< std::vector < double >> data_table;
+    //validity check of provided headers
+        //these are the supported options
+    std::vector< std::string > attrs = {
+        "id",
+        "location-x",
+        "location-y",
+        "location-z",
+        "aimpoint-x",
+        "aimpoint-y",
+        "aimpoint-z",
+        "soiling",
+        "reflectivity",
+        "enabled"
+    };
+    
+    //get the variable table header
+    std::string hdr_str(table_hdr);
+    std::vector<std::string> vars;
+    vars = split(hdr_str, ",");
 
-    //pull the ID's and data from the provided array
-    for (size_t i = 0; i < (*nhel); i++)
+    //processing user input data
+    std::unordered_map<std::string, std::vector<double>> datamap;
+    for (size_t i = 0; i < vars.size(); i++)
     {
-        for (size_t j = 0; j < (*ncols); j++)
+        if (std::find(attrs.begin(), attrs.end(), vars.at(i)) == attrs.end())
+            throw std::runtime_error("Invalid attribute specified: " + vars.at(i));
+
+        datamap[vars.at(i)].clear();
+        for (size_t h = 0; h < (*nhel); h++)
         {
-            if (j == 0)
-                hids.push_back((int)helio_data[i * (*ncols) + j]);
+            if (vars.at(i) == "id")
+                datamap[vars.at(i)].push_back((int)helio_data[h * (*ncols) + i]);
             else
-                data_table[i].push_back((double)helio_data[i * (*ncols) + j]);
+                datamap[vars.at(i)].push_back((double)helio_data[h * (*ncols) + i]);       
         }
     }
 
@@ -1643,165 +1660,127 @@ SPEXPORT bool sp_modify_heliostats(sp_data_t p_data, sp_number_t* helio_data, in
     unordered_map< int, Heliostat* > *hmap = SF->getHeliostatsByID();
     Hvector helios;
 
-    for (size_t i = 0; i < hids.size(); i++)
+    for (size_t i = 0; i < datamap.at("id").size(); i++)
     {
         try
         {
-            helios.push_back(hmap->at(hids.at(i)));
+            helios.push_back(hmap->at(datamap.at("id").at(i)));
         }
         catch (...)
         {
         }
     }
 
-    //get the variable table header
-    std::string hdr_str(table_hdr);
-    std::vector<std::string> vars;
-    vars = split(hdr_str, ",");
+    //locations need to be modified through the layout shell object
+    layout_shell* layout = SF->getLayoutShellObject();
 
-    //these are the supported options
-    std::vector< std::string > attrs = {
-    "location",
-    "aimpoint",
-    "soiling",
-    "reflectivity",
-    "enabled"
-    };
+    /*
+    //make sure the heliostat ID's array is the same length as the location array
+    if (locvec->size() != helios.size())
+        throw std::runtime_error("The number of locations provided does not match the number of heliostat ID's provided.");
+    */
 
-    //for each provided option
-    int var_i = 0;
-    for (std::size_t j = 0; j<*ncols - 1; j++)
+    //assign location(s)
+    layout->clear();
+
+    // Creating layout object with previous set values
+    for (size_t i = 0; i < helios.size(); i++)
     {
-        std::string varname = vars[var_i];
-        var_i++;
+        //update the layout object
+        layout->push_back(layout_obj());
+        layout_obj& lobj = layout->back();
 
-        //first make sure this is a valid attribute
-        if (std::find(attrs.begin(), attrs.end(), varname) == attrs.end())
-            throw std::runtime_error("Invalid attribute specified: " + varname);
+        Heliostat* helio = helios.at(i);
 
-        if (varname == "location")
+        lobj.aim = *helio->getAimPoint();
+        lobj.cant = *helio->getCantVector();
+        lobj.focal_x = helio->getFocalX();
+        lobj.focal_y = helio->getFocalY();
+        lobj.helio_type = helio->getMasterTemplate()->getId();
+        lobj.location = *helio->getLocation();
+
+        //update enabled/in layout statuses
+        lobj.is_enabled = helio->IsEnabled();
+        lobj.is_in_layout = helio->IsInLayout();
+    }
+
+    for (std::unordered_map<std::string, std::vector<double>>::iterator col = datamap.begin(); col != datamap.end(); col++)
+    {
+        std::string varname = col->first;
+        std::vector<double>& vardata = col->second;
+
+        // TODO: Should this be the layout or lobj?
+        if (varname == "location-x")
         {
-            /*
-            //gather data (assuming the next two columns are y and z)
-            std::vector<std::vector<double>>* locvec;
-            for (std::size_t i = 0; i < helios.size(); i++)
-            {
-                locvec->at(i).push_back(data_table[i][j]);
-                locvec->at(i).push_back(data_table[i][j+1]);
-                locvec->at(i).push_back(data_table[i][j+2]);
-            }
-            j += 2;  // advance column count
-            */
-
-            //locations need to be modified through the layout shell object
-            layout_shell *layout = SF->getLayoutShellObject();
-
-            /*
-            //make sure the heliostat ID's array is the same length as the location array
-            if (locvec->size() != helios.size())
-                throw std::runtime_error("The number of locations provided does not match the number of heliostat ID's provided.");
-            */
-
-            //assign location(s)
-            layout->clear();
-
-            for (size_t i = 0; i < helios.size(); i++)
-            {
-                //update the layout object
-                layout->push_back(layout_obj());
-                layout_obj& lobj = layout->back();
-
-                lobj.aim = *helios.at(i)->getAimPoint();
-                lobj.cant = *helios.at(i)->getCantVector();
-                lobj.focal_x = helios.at(i)->getFocalX();
-                lobj.focal_y = helios.at(i)->getFocalY();
-                lobj.helio_type = helios.at(i)->getMasterTemplate()->getId();
-
-                //update location
-                lobj.location.x = data_table[i][j];
-                lobj.location.y = data_table[i][j+1];
-                lobj.location.z = data_table[i][j+2];
-
-                //update enabled/in layout statuses
-                lobj.is_enabled = helios.at(i)->IsEnabled();
-                lobj.is_in_layout = helios.at(i)->IsInLayout();
-
-                /* TODO:
-                if (locvec->at(i).size() > 2)
-                    lobj.location.z = locvec->at(i).at(2);
-                */
-            }
-            j += 2;
-
-            SF->PrepareFieldLayout(*SF, 0, true);
+            for (size_t j = 0; j < vardata.size(); j++)
+                layout->at(j).location.x = vardata.at(j);
         }
-        else if (varname == "aimpoint")
+        else if (varname == "location-y")
         {
-            /* TODO:
-            //make sure the heliostat ID's array is the same length as the aimpoint array
-            std::vector< lk::vardata_t > *aimvec = cxt.arg(1).hash()->at("aimpoint")->vec();
-            if (aimvec->size() != helios.size())
-                throw std::runtime_error("The number of aimpoints provided does not match the number of heliostat ID's provided.");
-            */
-            
-            //assign aimpoint(s)
-            //gather data (assuming the next two columns are j and k)
-            for (size_t i = 0; i < helios.size(); i++)
-            {
-                double ii = data_table[i][j];
-                double jj = data_table[i][j + 1];
-                double kk = data_table[i][j + 2];
-
-                helios.at(i)->setAimPoint(ii, jj, kk);
-            }
-            j += 2;  // advance column count
-
+            for (size_t j = 0; j < vardata.size(); j++)
+                layout->at(j).location.y = vardata.at(j);
         }
-        else if (varname == "soiling")
+        else if (varname == "location-z")
         {
-            /* TODO:
-            //make sure the heliostat ID's array is the same length as the soiling array
-            std::vector< lk::vardata_t > *svec = cxt.arg(1).hash()->at("soiling")->vec();
-            if (svec->size() != helios.size())
-                throw std::runtime_error("The number of soiling values provided does not match the number of heliostat ID's provided.");
-            */
-            
-            //assign soiling(s)
-            for (size_t i = 0; i < helios.size(); i++)
-                helios.at(i)->getEfficiencyObject()->soiling = data_table[i][j];
+            for (size_t j = 0; j < vardata.size(); j++)
+                layout->at(j).location.z = vardata.at(j);
+        }
+        else if (varname == "aimpoint-x")
+        {
+            for (size_t j = 0; j < vardata.size(); j++)
+                layout->at(j).aim.x = vardata.at(j);
+        }
+        else if (varname == "aimpoint-y")
+        {
+            for (size_t j = 0; j < vardata.size(); j++)
+                layout->at(j).aim.y = vardata.at(j);
+        }
+        else if (varname == "aimpoint-z")
+        {
+            for (size_t j = 0; j < vardata.size(); j++)
+                layout->at(j).aim.z = vardata.at(j);
+        }
+        
+        else if (varname == "enabled")
+        {
+            for (size_t j = 0; j < vardata.size(); j++)
+            {
+                if ((int)vardata.at(j) == 1)
+                    helios.at(j)->IsEnabled(true);
+                else
+                    helios.at(j)->IsEnabled(false);
+            }
+        }
+    }
 
+    SF->PrepareFieldLayout(*SF, 0, true);
+
+    //not sure if this is needed...
+    Hvector* updated_helios = SF->getHeliostats();
+
+    std::vector<std::string> post_layout_cols = { "soiling", "reflectivity" };
+
+    for (size_t s = 0; s < post_layout_cols.size(); s++)
+    {
+        std::string varname = post_layout_cols.at(s);
+
+        if (datamap.find(varname) == datamap.end())
+            continue;
+
+        std::vector<double>& vardata = datamap.at(varname);
+
+        if (varname == "soiling")
+        {
+            for (size_t j = 0; j < vardata.size(); j++)
+                updated_helios->at(j)->getEfficiencyObject()->soiling = vardata.at(j);
         }
         else if (varname == "reflectivity")
         {
-            /*
-            //make sure the heliostat ID's array is the same length as the soiling array
-            std::vector< lk::vardata_t > *svec = cxt.arg(1).hash()->at("reflectivity")->vec();
-            if (svec->size() != helios.size())
-                throw std::runtime_error("The number of reflectivity values provided does not match the number of heliostat ID's provided.");
-            */
-            
-            //assign reflectivities
-            for (size_t i = 0; i < helios.size(); i++)
-                helios.at(i)->getEfficiencyObject()->reflectivity = data_table[i][j];
-
+            for (size_t j = 0; j < vardata.size(); j++)
+                updated_helios->at(j)->getEfficiencyObject()->reflectivity = vardata.at(j);
         }
-        else if (varname == "enabled")
-        {
-            /* TODO:
-            //make sure the heliostat ID's array is the same length as the soiling array
-            std::vector< lk::vardata_t > *svec = cxt.arg(1).hash()->at("enabled")->vec();
-            if (svec->size() != helios.size())
-                throw std::runtime_error("The number of 'enabled' values provided does not match the number of heliostat ID's provided.");
-            */
-            //Enable
-            for (size_t i = 0; i < helios.size(); i++)
-                if ((int) data_table[i][j] == 1)
-                    helios.at(i)->IsEnabled(true);
-                else
-                    helios.at(i)->IsEnabled(false);
-        }
-
     }
+
     return true;
 }
 
@@ -1823,7 +1802,10 @@ SPEXPORT bool sp_save_from_script(sp_data_t p_data, const char* sp_fname)
 
     try
     {
-        ioutil::saveXMLInputFile(fname, *V, *F.GetParametricDataObject(), *F.GetOptimizationDataObject(), F.GetVersionInfo() + " (lk script)");
+        parametric p;
+        optimization o;
+
+        ioutil::saveXMLInputFile(fname, *V, p, o,"C++_API");
         return true;
     }
     catch (...)
@@ -1833,32 +1815,6 @@ SPEXPORT bool sp_save_from_script(sp_data_t p_data, const char* sp_fname)
     return false;
 }
 
-SPEXPORT bool sp_open_from_script(sp_data_t p_data, const char* sp_fname)
-{
-    /*
-	Open a SolarPILOT .spt case file. Returns true if successful. Updates the interface.
-	Returns: (string:path):boolean
-    */
-
-    std::string fname(sp_fname);
-    if (!ioutil::dir_exists(ioutil::path_only(fname).c_str()))
-    {
-        return false;
-    }
-
-    api_helper *mc = static_cast<api_helper*>(p_data);
-
-    try
-    {
-        F.Open(fname, true);
-        return true;
-    }
-    catch (std::exception &e)
-    {
-        std::runtime_error(e.what());
-    }
-    return false;
-}
 
 SPEXPORT bool sp_dump_varmap(sp_data_t p_data, const char* sp_fname)
 {
@@ -1937,3 +1893,5 @@ SPEXPORT bool sp_dump_varmap(sp_data_t p_data, const char* sp_fname)
     }
     return false;
 }
+
+

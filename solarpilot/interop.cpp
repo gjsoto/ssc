@@ -50,6 +50,7 @@
 #include <stdio.h>
 #include <algorithm>
 #include <sstream>
+#include <fstream>
 #include <iomanip>
 #include <math.h>
 #include <thread>
@@ -114,6 +115,17 @@ par_variable::par_variable()
 void SimControl::SetThreadCount( int nthread)
 {
 	_n_threads = max(min(int(std::thread::hardware_concurrency()), nthread), 1);
+}
+
+SimControl::SimControl()
+{
+	_n_threads = 1;
+	_n_threads_active = 1;
+	_is_mt_simulation = false;
+	_cancel_simulation = false;
+
+	_stthread = 0;
+	_STSim = 0;
 }
 //--------------------
 
@@ -773,7 +785,7 @@ bool interop::HermiteFluxSimulationHandler(sim_results& results, SolarField& SF,
 }
 
 //TODO: Transfer over all function calls to new function definition
-bool interop::SolTraceFluxSimulation(SimControl& SimC, STSimControl& STSimC, SolarField& SF, var_map& vset, Hvector& helios)
+bool interop::SolTraceFluxSimulation(SimControl& SimC, SolarField& SF, var_map& vset, Hvector& helios)
 {
 	/*
 	Send geometry to Soltrace and get back simulation results.
@@ -806,11 +818,16 @@ bool interop::SolTraceFluxSimulation(SimControl& SimC, STSimControl& STSimC, Sol
 	int nsunrays_loadst = 0;
 	if (is_load_raydata)
 	{
-		if (!ioutil::file_exists(raydata_file.GetFullPath().c_str()))
-			throw spexception("Specified ray data file does not exist. Looking for file: " + raydata_file.GetFullPath());
+		//TODO:if (!ioutil::file_exists(raydata_file.GetFullPath().c_str()))
+			//throw spexception("Specified ray data file does not exist. Looking for file: " + raydata_file.GetFullPath());
+		
+		if (!ioutil::file_exists(raydata_file.c_str()))
+			throw spexception("Specified ray data file does not exist. Looking for file: " + raydata_file);
+
 
 		//Load the ray data from a file
-		ifstream fdat(raydata_file.GetFullPath().ToStdString());
+		//TODO: ifstream fdat(raydata_file.GetFullPath().ToStdString());
+		ifstream fdat(raydata_file);
 
 		if (fdat.is_open())
 		{
@@ -923,7 +940,10 @@ bool interop::SolTraceFluxSimulation(SimControl& SimC, STSimControl& STSimC, Sol
 	//for saving, check that the specified directory exists. If none specified or if it doesn't exist, prepend the working directory.
 	if (is_save_raydata)
 	{
-		if (!raydata_file.DirExists())
+		//TODO:if (!raydata_file.DirExists())
+			//raydata_file = _working_dir.GetPath(true) + raydata_file.GetName();
+
+		if (!ioutil::dir_exists(raydata_file.substr(0, raydata_file.find_last_of("\\/")).c_str()))
 			raydata_file = _working_dir.GetPath(true) + raydata_file.GetName();
 	}
 
@@ -931,19 +951,19 @@ bool interop::SolTraceFluxSimulation(SimControl& SimC, STSimControl& STSimC, Sol
 	int minrays, maxrays;
 	vector<st_context_t> contexts;
 
-	STSimC._stthread = 0;    //initialize to null
+	SimC._stthread = 0;    //initialize to null
 
 	//get sun position and create a vector
 	double el = vset.flux.flux_solar_el.Val() * D2R;
 	double az = vset.flux.flux_solar_az.Val() * D2R;
 	Vect sun = Ambient::calcSunVectorFromAzZen(az, PI / 2. - el);
 
-	STSimC._STSim = new ST_System;
+	SimC._STSim = new ST_System;
 
-	STSimC._STSim->CreateSTSystem(SF, helios, sun);
+	SimC._STSim->CreateSTSystem(SF, helios, sun);
 
-	minrays = STSimC._STSim->sim_raycount;
-	maxrays = STSimC._STSim->sim_raymax;
+	minrays = SimC._STSim->sim_raycount;
+	maxrays = SimC._STSim->sim_raymax;
 
 	vector< vector<vector< double > >* > st0datawrap;
 	vector< vector<vector< double > >* > st1datawrap;
@@ -951,7 +971,7 @@ bool interop::SolTraceFluxSimulation(SimControl& SimC, STSimControl& STSimC, Sol
 	if (SimC._n_threads > 1)
 	{
 		//Multithreading support
-		STSimC._stthread = new STSimThread[SimC._n_threads];
+		SimC._stthread = new STSimThread[SimC._n_threads];
 		SimC._is_mt_simulation = true;
 
 		int rays_alloc = 0;
@@ -961,15 +981,15 @@ bool interop::SolTraceFluxSimulation(SimControl& SimC, STSimControl& STSimC, Sol
 			//declare soltrace context
 			st_context_t pcxt = st_create_context();
 			//load soltrace data structure into context
-			ST_System::LoadIntoContext(STSimC._STSim, pcxt);
+			ST_System::LoadIntoContext(SimC._STSim, pcxt);
 			//get random seed
 			int seed = SF.getFluxObject()->getRandomObject()->integer();
 			//setup the thread
-			STSimC._stthread[i].Setup(pcxt, i, seed, is_load_raydata, is_save_raydata);
+			SimC._stthread[i].Setup(pcxt, i, seed, is_load_raydata, is_save_raydata);
 
 			//Decide how many rays to trace for each thread. Evenly divide and allocate remainder to thread 0
-			int rays_this_thread = STSimC._STSim->sim_raycount / SimC._n_threads;
-			if (i == 0) rays_this_thread += (STSimC._STSim->sim_raycount % SimC._n_threads);
+			int rays_this_thread = SimC._STSim->sim_raycount / SimC._n_threads;
+			if (i == 0) rays_this_thread += (SimC._STSim->sim_raycount % SimC._n_threads);
 			//when loading ray data externally, we need to divide up receiver stage hits
 			int rays_this_thread1 = raydat_st1.size() / SimC._n_threads;     //for receiver stage input rays
 			if (i == 0) rays_this_thread1 += (raydat_st1.size() % SimC._n_threads);
@@ -977,19 +997,19 @@ bool interop::SolTraceFluxSimulation(SimControl& SimC, STSimControl& STSimC, Sol
 			//if loading ray data, add by thread here
 			if (is_load_raydata)
 			{
-				STSimC._stthread[i].CopyStageRayData(raydat_st0, 0, rays_alloc, rays_alloc + rays_this_thread);
-				STSimC._stthread[i].CopyStageRayData(raydat_st1, 1, rays_alloc1, rays_alloc1 + rays_this_thread1);   //for receiver stage input rays
+				SimC._stthread[i].CopyStageRayData(raydat_st0, 0, rays_alloc, rays_alloc + rays_this_thread);
+				SimC._stthread[i].CopyStageRayData(raydat_st1, 1, rays_alloc1, rays_alloc1 + rays_this_thread1);   //for receiver stage input rays
 			}
 			rays_alloc += rays_this_thread;
 			rays_alloc1 += rays_this_thread1;
 
-			st_sim_params(pcxt, rays_this_thread, STSimC._STSim->sim_raymax / SimC._n_threads);
+			st_sim_params(pcxt, rays_this_thread, SimC._STSim->sim_raymax / SimC._n_threads);
 
 		}
 
 		for (int i = 0; i < SimC._n_threads; i++)
 		{
-			thread(&STSimThread::StartThread, std::ref(STSimC._stthread[i])).detach();
+			thread(&STSimThread::StartThread, std::ref(SimC._stthread[i])).detach();
 		}
 		//wxLogMessage((wxString)("Running threads"));
 		int ntotal = 0, ntraced = 0, ntotrace = 0, stagenum = 0, nstages = 0;
@@ -999,7 +1019,7 @@ bool interop::SolTraceFluxSimulation(SimControl& SimC, STSimControl& STSimC, Sol
 		{
 			int num_finished = 0;
 			for (int i = 0; i < SimC._n_threads; i++)
-				if (STSimC._stthread[i].IsFinished())
+				if (SimC._stthread[i].IsFinished())
 					num_finished++;
 
 			if (num_finished == SimC._n_threads)
@@ -1009,17 +1029,17 @@ bool interop::SolTraceFluxSimulation(SimControl& SimC, STSimControl& STSimC, Sol
 			int ntotaltraces = 0;
 			for (int i = 0; i < SimC._n_threads; i++)
 			{
-				STSimC._stthread[i].GetStatus(&ntotal, &ntraced, &ntotrace, &stagenum, &nstages);
+				SimC._stthread[i].GetStatus(&ntotal, &ntraced, &ntotrace, &stagenum, &nstages);
 				ntotaltraces += ntotal;
 			}
 
 			SolTraceProgressUpdate(ntotal, ntraced, ntotrace, stagenum, nstages, (void*)NULL);
 
 			// if dialog's cancel button was pressed, send cancel signal to all threads
-			if (_cancel_simulation)
+			if (SimC._cancel_simulation)
 			{
 				for (int i = 0; i < SimC._n_threads; i++)
-					STSimC._stthread[i].CancelTrace();
+					SimC._stthread[i].CancelTrace();
 			}
 			std::this_thread::sleep_for(std::chrono::milliseconds(75));
 		}
@@ -1029,8 +1049,8 @@ bool interop::SolTraceFluxSimulation(SimControl& SimC, STSimControl& STSimC, Sol
 		contexts.clear();
 		for (int i = 0; i < SimC._n_threads; i++)
 		{
-			contexts.push_back(STSimC._stthread[i].GetContextId());
-			int code = STSimC._stthread[i].GetResultCode();
+			contexts.push_back(SimC._stthread[i].GetContextId());
+			int code = SimC._stthread[i].GetResultCode();
 
 			if (code < 0)
 			{
@@ -1047,8 +1067,8 @@ bool interop::SolTraceFluxSimulation(SimControl& SimC, STSimControl& STSimC, Sol
 		{
 			for (int i = 0; i < SimC._n_threads; i++)
 			{
-				st0datawrap.push_back(STSimC._stthread[i].GetStage0RayDataObject());
-				st1datawrap.push_back(STSimC._stthread[i].GetStage1RayDataObject());
+				st0datawrap.push_back(SimC._stthread[i].GetStage0RayDataObject());
+				st1datawrap.push_back(SimC._stthread[i].GetStage1RayDataObject());
 			}
 		}
 
@@ -1058,8 +1078,8 @@ bool interop::SolTraceFluxSimulation(SimControl& SimC, STSimControl& STSimC, Sol
 		//Create context
 		st_context_t cxt = st_create_context();
 		int seed = SF.getFluxObject()->getRandomObject()->integer();
-		ST_System::LoadIntoContext(STSimC._STSim, cxt);
-		if (interop::SolTraceFluxSimulation_ST(cxt, seed, *STSimC._STSim, STCallback, this, &raydat_st0, &raydat_st1, is_save_raydata, is_load_raydata))
+		ST_System::LoadIntoContext(SimC._STSim, cxt);
+		if (interop::SolTraceFluxSimulation_ST(cxt, seed, *SimC._STSim, STCallback, this, &raydat_st0, &raydat_st1, is_save_raydata, is_load_raydata))
 			contexts.push_back(cxt);
 		else
 			err_maxray = true;  //hit max ray limit if function returns false
@@ -1084,9 +1104,9 @@ bool interop::SolTraceFluxSimulation(SimControl& SimC, STSimControl& STSimC, Sol
 		return false;
 	}
 	//Was the simulation cancelled during st_sim_run()?
-	if (_cancel_simulation)
+	if (SimC._cancel_simulation)
 	{
-		_cancel_simulation = false; //reset
+		SimC._cancel_simulation = false; //reset
 		return false;
 	}
 
@@ -1101,9 +1121,9 @@ bool interop::SolTraceFluxSimulation(SimControl& SimC, STSimControl& STSimC, Sol
 	}
 
 	double bounds[5]; //xmin, xmax, ymin, ymax, empty
-	STSimC._STSim->IntData.nsunrays = 0;
+	SimC._STSim->IntData.nsunrays = 0;
 
-	STSimC._STSim->IntData.AllocateArrays(nint);
+	SimC._STSim->IntData.AllocateArrays(nint);
 
 	//Collect all of the results
 	int ind = 0;
@@ -1111,15 +1131,15 @@ bool interop::SolTraceFluxSimulation(SimControl& SimC, STSimControl& STSimC, Sol
 	{
 		int cs = csizes.at(i);
 
-		st_locations(contexts.at(i), &STSimC._STSim->IntData.hitx[ind], &STSimC._STSim->IntData.hity[ind], &STSimC._STSim->IntData.hitz[ind]);
-		st_cosines(contexts.at(i), &STSimC._STSim->IntData.cosx[ind], &STSimC._STSim->IntData.cosy[ind], &STSimC._STSim->IntData.cosz[ind]);
-		st_elementmap(contexts.at(i), &STSimC._STSim->IntData.emap[ind]);
-		st_stagemap(contexts.at(i), &STSimC._STSim->IntData.smap[ind]);
-		st_raynumbers(contexts.at(i), &STSimC._STSim->IntData.rnum[ind]);
+		st_locations(contexts.at(i), &SimC._STSim->IntData.hitx[ind], &SimC._STSim->IntData.hity[ind], &SimC._STSim->IntData.hitz[ind]);
+		st_cosines(contexts.at(i), &SimC._STSim->IntData.cosx[ind], &SimC._STSim->IntData.cosy[ind], &SimC._STSim->IntData.cosz[ind]);
+		st_elementmap(contexts.at(i), &SimC._STSim->IntData.emap[ind]);
+		st_stagemap(contexts.at(i), &SimC._STSim->IntData.smap[ind]);
+		st_raynumbers(contexts.at(i), &SimC._STSim->IntData.rnum[ind]);
 
 		int nsr;
 		st_sun_stats(contexts.at(i), &bounds[0], &bounds[1], &bounds[2], &bounds[3], &nsr);    //Bounds should always be the same
-		STSimC._STSim->IntData.nsunrays += nsr;
+		SimC._STSim->IntData.nsunrays += nsr;
 		ind += cs;
 
 	}
@@ -1129,10 +1149,10 @@ bool interop::SolTraceFluxSimulation(SimControl& SimC, STSimControl& STSimC, Sol
 
 	//if the heliostat field ray data is loaded from a file, just specify the number of sun rays based on this value
 	if (is_load_raydata)
-		STSimC._STSim->IntData.nsunrays = nsunrays_loadst;
+		SimC._STSim->IntData.nsunrays = nsunrays_loadst;
 
 	//Get bounding box and sun ray information to calculate power per ray
-	STSimC._STSim->IntData.q_ray = (bounds[1] - bounds[0]) * (bounds[3] - bounds[2]) / float(STSimC._STSim->IntData.nsunrays) * dni;
+	SimC._STSim->IntData.q_ray = (bounds[1] - bounds[0]) * (bounds[3] - bounds[2]) / float(SimC._STSim->IntData.nsunrays) * dni;
 
 
 	bool skip_receiver = false;
@@ -1140,18 +1160,18 @@ bool interop::SolTraceFluxSimulation(SimControl& SimC, STSimControl& STSimC, Sol
 	if (!skip_receiver)
 	{
 
-		bounds[4] = (float)STSimC._STSim->IntData.nsunrays;
+		bounds[4] = (float)SimC._STSim->IntData.nsunrays;
 
 		for (int i = 0; i < 5; i++)
-			STSimC._STSim->IntData.bounds[i] = bounds[i];
-		SolTraceFluxBinning(STSimC, SF);
+			SimC._STSim->IntData.bounds[i] = bounds[i];
+		SolTraceFluxBinning(SimC, SF);
 
 
 		//Process the results
 		sim_params P;
 		P.dni = dni;
 		double azzen[2] = { az, PI / 2. - el };
-		_results.back().process_raytrace_simulation(SF, P, 2, azzen, helios, STSimC._STSim->IntData.q_ray, STSimC._STSim->IntData.emap, STSimC._STSim->IntData.smap, STSimC._STSim->IntData.rnum, nint, bounds);
+		_results.back().process_raytrace_simulation(SF, P, 2, azzen, helios, SimC._STSim->IntData.q_ray, SimC._STSim->IntData.emap, SimC._STSim->IntData.smap, SimC._STSim->IntData.rnum, nint, bounds);
 	}
 
 	//If the user wants to save stage0 ray data, do so here
@@ -1160,7 +1180,7 @@ bool interop::SolTraceFluxSimulation(SimControl& SimC, STSimControl& STSimC, Sol
 		ofstream fout(raydata_file.GetFullPath().ToStdString());
 		fout.clear();
 		//first line is number of sun rays
-		fout << STSimC._STSim->IntData.nsunrays << "\n";
+		fout << SimC._STSim->IntData.nsunrays << "\n";
 		//write heliostat IN stage
 		for (int i = 0; i < (int)st0datawrap.size(); i++)
 		{
@@ -1207,9 +1227,9 @@ bool interop::SolTraceFluxSimulation(SimControl& SimC, STSimControl& STSimC, Sol
 			for (int i = 0; i < nint; i++)
 			{
 				fprintf(file, "%.3f, %.3f, %.3f, %.7f, %.7f, %.7f, %d, %d, %d\n",
-					STSimC._STSim->IntData.hitx[i], STSimC._STSim->IntData.hity[i], STSimC._STSim->IntData.hitz[i],
-					STSimC._STSim->IntData.cosx[i], STSimC._STSim->IntData.cosy[i], STSimC._STSim->IntData.cosz[i],
-					STSimC._STSim->IntData.emap[i], STSimC._STSim->IntData.smap[i], STSimC._STSim->IntData.rnum[i]);
+					SimC._STSim->IntData.hitx[i], SimC._STSim->IntData.hity[i], SimC._STSim->IntData.hitz[i],
+					SimC._STSim->IntData.cosx[i], SimC._STSim->IntData.cosy[i], SimC._STSim->IntData.cosz[i],
+					SimC._STSim->IntData.emap[i], SimC._STSim->IntData.smap[i], SimC._STSim->IntData.rnum[i]);
 			}
 			fclose(file);
 		}
@@ -1217,14 +1237,14 @@ bool interop::SolTraceFluxSimulation(SimControl& SimC, STSimControl& STSimC, Sol
 	}
 
 	//Clean up
-	STSimC._STSim->IntData.DeallocateArrays();
-	if (STSimC._stthread != 0) delete[] STSimC._stthread;
+	SimC._STSim->IntData.DeallocateArrays();
+	if (SimC._stthread != 0) delete[] SimC._stthread;
 
 	return true;
 
 }
 
-bool interop::SolTraceFluxBinning(STSimControl& STSimC, SolarField& SF)
+bool interop::SolTraceFluxBinning(SimControl& SimC, SolarField& SF)
 {
 	//Collect all of the rays that hit the receiver(s) into the flux profile
 	int rstage1 = 2;
@@ -1271,15 +1291,15 @@ bool interop::SolTraceFluxBinning(STSimControl& STSimC, SolarField& SF)
 			nfy = fs->getFluxNY();
 
 			Arec = Rec->getAbsorberArea();
-			dqspec = STSimC._STSim->IntData.q_ray / Arec * (float)(nfx * nfy);
+			dqspec = SimC._STSim->IntData.q_ray / Arec * (float)(nfx * nfy);
 
-			for (int j = 0; j < STSimC._STSim->IntData.nint; j++)
+			for (int j = 0; j < SimC._STSim->IntData.nint; j++)
 			{    //loop through each intersection
 
-				if (STSimC._STSim->IntData.smap[j] != rstage1 || abs(STSimC._STSim->IntData.emap[j]) != e_ind) continue;    //only consider rays that interact with this element
+				if (SimC._STSim->IntData.smap[j] != rstage1 || abs(SimC._STSim->IntData.emap[j]) != e_ind) continue;    //only consider rays that interact with this element
 
 				//Where did the ray hit relative to the location of the receiver?
-				rayhit.Set(STSimC._STSim->IntData.hitx[j] - offset.x, STSimC._STSim->IntData.hity[j] - offset.y, STSimC._STSim->IntData.hitz[j] - offset.z);
+				rayhit.Set(SimC._STSim->IntData.hitx[j] - offset.x, SimC._STSim->IntData.hity[j] - offset.y, SimC._STSim->IntData.hitz[j] - offset.z);
 
 				//Do any required transform to get the ray intersection into receiver coordinates
 				Toolbox::rotation(-raz, 2, rayhit);
@@ -1324,16 +1344,16 @@ bool interop::SolTraceFluxBinning(STSimControl& STSimC, SolarField& SF)
 			nfy = fs->getFluxNY();
 
 			Arec = Rec->getAbsorberArea();
-			dqspec = STSimC._STSim->IntData.q_ray / Arec * (float)(nfx * nfy);
+			dqspec = SimC._STSim->IntData.q_ray / Arec * (float)(nfx * nfy);
 
 
-			for (int j = 0; j < STSimC._STSim->IntData.nint; j++)
+			for (int j = 0; j < SimC._STSim->IntData.nint; j++)
 			{    //loop through each intersection
 
-				if (STSimC._STSim->IntData.smap[j] != rstage1 || abs(STSimC._STSim->IntData.emap[j]) != e_ind) continue;    //only consider rays that interact with this element
+				if (SimC._STSim->IntData.smap[j] != rstage1 || abs(SimC._STSim->IntData.emap[j]) != e_ind) continue;    //only consider rays that interact with this element
 
 				//Where did the ray hit relative to the location of the receiver?
-				rayhit.Set(STSimC._STSim->IntData.hitx[j] - offset.x, STSimC._STSim->IntData.hity[j] - offset.y, STSimC._STSim->IntData.hitz[j] - offset.z);
+				rayhit.Set(SimC._STSim->IntData.hitx[j] - offset.x, SimC._STSim->IntData.hity[j] - offset.y, SimC._STSim->IntData.hitz[j] - offset.z);
 
 				//Do any required transform to get the ray intersection into receiver coordinates
 				Toolbox::rotation(PI - raz, 2, rayhit);

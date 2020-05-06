@@ -211,17 +211,15 @@ public:
 		_n_threads,
 		_n_threads_active;
 	bool
-		_is_mt_simulation;
+		_is_mt_simulation,
+		_cancel_simulation;
 
-	void SetThreadCount(int nthreads);
-};
-
-//Class for SolTrace simulation control variables.
-class STSimControl
-{
-public:
 	STSimThread* _stthread;
 	ST_System* _STSim;
+
+	SimControl();
+
+	void SetThreadCount(int nthreads);
 };
 
 //Classes for collecting and processing simulation results
@@ -354,8 +352,8 @@ namespace interop
 #endif
 	void UpdateMapLayoutData(var_map& V, Hvector* helios);
 	bool HermiteFluxSimulationHandler(sim_results& results, SolarField& SF, Hvector& helios);
-	bool SolTraceFluxSimulation(SimControl& SimC, STSimControl& STSimC, SolarField& SF, var_map& vset, Hvector& helios);
-	bool SolTraceFluxBinning(STSimControl& STSimC, SolarField& SF);
+	bool SolTraceFluxSimulation(SimControl& SimC, SolarField& SF, var_map& vset, Hvector& helios);
+	bool SolTraceFluxBinning(SimControl& STSimC, SolarField& SF);
 	bool DoManagedLayout(SimControl& SimC, SolarField& SF, var_map& V, LayoutSimThread* simthread);
 	void CreateResultsTable(sim_result& result, grid_emulator_base& table);
 };
