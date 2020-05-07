@@ -480,7 +480,6 @@ SPEXPORT int sp_update_geometry(sp_data_t p_data)
     {
         //no layout exists, so we should be calling the 'run_layout' method instead
         std::runtime_error("No layout exists, so the 'update_geometry' function cannot be executed. Please first create or import a layout using 'run_layout'.");
-        //cxt.result().assign(0.);
         return 0;
     }
 
@@ -666,7 +665,8 @@ SPEXPORT bool sp_get_layout_info(sp_data_t p_data, sp_number_t *layoutinfo, int*
         if ((i == 0) && (c != *ncol - 1))
         {
             SC->message_callback("Information was lost check sp_get_layout_info output formating.", SC->message_callback_data);
-            //std::runtime_error("Information was lost check sp_get_layout_info output formating.");
+            delete[] layoutinfo;
+            return false;
         }
     }
 
@@ -840,7 +840,6 @@ SPEXPORT const char *sp_summary_results(sp_data_t p_data)
 SPEXPORT bool sp_detail_results(sp_data_t p_data, sp_number_t* ret, int* nrows, int* ncols, const char* header, sp_number_t* selhel = NULL, int nselhel = 0)
 {
     /*
-
     returns a vector with hash entries for each heliostat
 
     id(integer), location (array), aimpoint (array), tracking_vector (array), layout_metric (double), power_to_receiver (double),
@@ -945,7 +944,8 @@ SPEXPORT bool sp_detail_results(sp_data_t p_data, sp_number_t* ret, int* nrows, 
             if ((i == 0) && (c != *ncols - 1))
             {
                 SC->message_callback("Information was lost check sp_detail_results output formating.", SC->message_callback_data);
-                //std::runtime_error("Information was lost check sp_detail_results output formating.");
+                delete[] ret;
+                return false;
             }
         }
 
@@ -1494,7 +1494,6 @@ SPEXPORT bool sp_heliostats_by_region(sp_data_t p_data, sp_number_t* retvec, int
             {
                 SC->message_callback("Invalid SVG file - not found.", SC->message_callback_data);
                 return false;
-                //throw std::runtime_error("Invalid SVG file - not found.");
             }
 
             if (svg_opt_tab != NULL)
@@ -1547,8 +1546,10 @@ SPEXPORT bool sp_heliostats_by_region(sp_data_t p_data, sp_number_t* retvec, int
         {
             //get the string data and break it up into units
             if (svgfname_data == NULL)
+            {
                 SC->message_callback("svg data must be provided for the svg option.", SC->message_callback_data);
-                //std::runtime_error("svg data must be provided for the svg option.");
+                return false;
+            }
             std::string data = (std::string) svgfname_data;
             entries = split(data, ";");
             scale_s = split(entries.front(), " ");
@@ -1605,7 +1606,6 @@ SPEXPORT bool sp_heliostats_by_region(sp_data_t p_data, sp_number_t* retvec, int
     else
     {
         SC->message_callback("invalid region type specified. Expecting one of [cylindrical, cartesian, polygon]", SC->message_callback_data);
-        //throw std::runtime_error("invalid region type specified. Expecting one of [cylindrical, cartesian, polygon]");
         return false;
     }
     // pass back size of return vector and vector values
@@ -1630,7 +1630,6 @@ SPEXPORT bool sp_modify_heliostats(sp_data_t p_data, sp_number_t* helio_data, in
     Returns: none
     */
 
-    ///TODO: UPDATE this function with new methodology 
     api_helper *mc = static_cast<api_helper*>(p_data);
     SolarField* SF = &mc->solarfield;
     SimControl* SC = &mc->sim_control;
@@ -1666,7 +1665,6 @@ SPEXPORT bool sp_modify_heliostats(sp_data_t p_data, sp_number_t* helio_data, in
         {
             std::string msg = "Invalid attribute specified: " + vars.at(i);
             SC->message_callback(msg.c_str(), SC->message_callback_data);
-            //throw std::runtime_error("Invalid attribute specified: " + vars.at(i));
             return false;
         }
 

@@ -2505,7 +2505,7 @@ std::vector<std::string> grid_emulator_base::GetPrintableTable(std::string eol)
 		{
 			std::string tval = GetCellValue(i, j);
 
-			tval.erase(std::remove(tval.begin(), tval.end(), ","), tval.end());
+			tval.erase(std::remove(tval.begin(), tval.end(), ','), tval.end());
 			line.append(", " + tval); //Remove any commas from cell values - the file is comma-delimited
 		}
 		printable[i + 1] = line.append(eol);
