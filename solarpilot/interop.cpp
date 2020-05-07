@@ -806,151 +806,6 @@ bool interop::SolTraceFluxSimulation(SimControl& SimC, sim_results& results, Sol
 
 	*/
 
-
-	//No longer supported
-	/* CHECK:
-	bool is_load_raydata = vset.flux.is_load_raydata.val;
-	bool is_save_raydata = vset.flux.is_save_raydata.val;
-	//raydata_file
-	//wxFileName raydata_file(vset.flux.raydata_file.val);
-	std::string raydata_file(vset.flux.raydata_file.val);
-
-	//check that the file exists
-	vector<vector<double> > raydat_st0;
-	vector<vector<double> > raydat_st1;
-	int nsunrays_loadst = 0;
-	if (is_load_raydata)
-	{
-		//TODO:if (!ioutil::file_exists(raydata_file.GetFullPath().c_str()))
-			//throw spexception("Specified ray data file does not exist. Looking for file: " + raydata_file.GetFullPath());
-		
-		if (!ioutil::file_exists(raydata_file.c_str()))
-			throw spexception("Specified ray data file does not exist. Looking for file: " + raydata_file);
-
-
-		//Load the ray data from a file
-		//TODO: ifstream fdat(raydata_file.GetFullPath().ToStdString());
-		ifstream fdat(raydata_file);
-
-		if (fdat.is_open())
-		{
-
-			string str;
-			str.reserve(96);
-
-			char line[96];
-			bool nextloop = false;
-			bool firstline = true;
-			while (fdat.getline(line, 96))
-			{
-				//first line is number of sun rays
-				if (firstline)
-				{
-					for (int i = 0; i < 16; i++)
-					{
-						if (line[i] == '\n' || i == 15)
-						{
-							to_integer(str, &nsunrays_loadst);
-							str.clear();
-							str.reserve(96);
-							break;
-						}
-						else
-						{
-							str.push_back(line[i]);
-						}
-					}
-					firstline = false;
-					continue;
-				}
-
-
-				vector<double> dat(8);
-
-
-				int ilast = 0;
-
-				for (int i = 0; i < 96; i++)
-				{
-					//check for the transition character
-					if (line[i] == '#')
-					{
-						nextloop = true;
-						break;
-					}
-
-					if (line[i] == ',')
-					{
-						to_double(str, &dat[ilast++]);
-
-						//clear the string
-						str.clear();
-						str.reserve(96);
-						//if this was the 8th entry, go to next line
-						if (ilast > 7)
-							break;
-					}
-					else
-					{
-						str.push_back(line[i]);
-					}
-				}
-				ilast = 0;
-
-				if (nextloop) break;
-
-				raydat_st0.push_back(dat);
-			}
-
-			//next loop to get stage 1 input rays
-			while (fdat.getline(line, 96))
-			{
-				vector<double> dat(7);
-
-				int ilast = 0;
-				//int istr = 0;
-				for (int i = 0; i < 96; i++)
-				{
-					if (line[i] == ',')
-					{
-						to_double(str, &dat[ilast++]);
-
-						//clear the string
-						str.clear();
-						str.reserve(96);
-						//if this was the 8th entry, go to next line
-						if (ilast > 6)
-							break;
-					}
-					else
-					{
-						str.push_back(line[i]);
-					}
-				}
-				ilast = 0;
-
-				raydat_st1.push_back(dat);
-			}
-
-			fdat.close();
-		}
-
-		//set the number of traced rays based on the length of the supplied data
-		int nray = (int)raydat_st0.size();
-
-		vset.flux.min_rays.val = nray;
-	}
-	//for saving, check that the specified directory exists. If none specified or if it doesn't exist, prepend the working directory.
-	if (is_save_raydata)
-	{
-		//TODO:if (!raydata_file.DirExists())
-			//raydata_file = _working_dir.GetPath(true) + raydata_file.GetName();
-
-		if (!ioutil::dir_exists(raydata_file.substr(0, raydata_file.find_last_of("\\/")).c_str()))
-			raydata_file = _working_dir.GetPath(true) + raydata_file.GetName();
-	}
-	*/
-
 	bool err_maxray = false;
 	int minrays, maxrays;
 	vector<st_context_t> contexts;
@@ -990,27 +845,6 @@ bool interop::SolTraceFluxSimulation(SimControl& SimC, sim_results& results, Sol
 			int seed = SF.getFluxObject()->getRandomObject()->integer();
 			//setup the thread
 			SimC._stthread[i].Setup(pcxt, i, seed);
-
-			//SimC._stthread[i].Setup(pcxt, i, seed, is_load_raydata, is_save_raydata);
-			/* CHECK:
-			//Decide how many rays to trace for each thread. Evenly divide and allocate remainder to thread 0
-			int rays_this_thread = SimC._STSim->sim_raycount / SimC._n_threads;
-			if (i == 0) rays_this_thread += (SimC._STSim->sim_raycount % SimC._n_threads);
-			//when loading ray data externally, we need to divide up receiver stage hits
-			int rays_this_thread1 = raydat_st1.size() / SimC._n_threads;     //for receiver stage input rays
-			if (i == 0) rays_this_thread1 += (raydat_st1.size() % SimC._n_threads);
-
-			//if loading ray data, add by thread here
-			if (is_load_raydata)
-			{
-				SimC._stthread[i].CopyStageRayData(raydat_st0, 0, rays_alloc, rays_alloc + rays_this_thread);
-				SimC._stthread[i].CopyStageRayData(raydat_st1, 1, rays_alloc1, rays_alloc1 + rays_this_thread1);   //for receiver stage input rays
-			}
-			rays_alloc += rays_this_thread;
-			rays_alloc1 += rays_this_thread1;
-			
-			st_sim_params(pcxt, rays_this_thread, SimC._STSim->sim_raymax / SimC._n_threads);
-			*/
 		}
 
 		for (int i = 0; i < SimC._n_threads; i++)
@@ -1069,18 +903,6 @@ bool interop::SolTraceFluxSimulation(SimControl& SimC, sim_results& results, Sol
 			}
 		}
 
-		/* CHECK:
-		//Consolidate the stage 0 ray data if needed
-		if (is_save_raydata && !errors_found)
-		{
-			for (int i = 0; i < SimC._n_threads; i++)
-			{
-				st0datawrap.push_back(SimC._stthread[i].GetStage0RayDataObject());
-				st1datawrap.push_back(SimC._stthread[i].GetStage1RayDataObject());
-			}
-		}
-		*/
-
 	}
 	else
 	{
@@ -1102,14 +924,6 @@ bool interop::SolTraceFluxSimulation(SimControl& SimC, sim_results& results, Sol
 			contexts.push_back(cxt);
 		else
 			err_maxray = true;  //hit max ray limit if function returns false
-
-		/* CHECK:
-		if (is_save_raydata && !err_maxray)
-		{
-			st0datawrap.push_back(&raydat_st0);
-			st1datawrap.push_back(&raydat_st1);
-		}
-		*/
 	}
 
 	//reset the progress gauge
@@ -1170,12 +984,6 @@ bool interop::SolTraceFluxSimulation(SimControl& SimC, sim_results& results, Sol
 	//DNI
 	double dni = vset.sf.dni_des.val / 1000.;    //[kw/m2]
 
-	/* CHECK:
-	//if the heliostat field ray data is loaded from a file, just specify the number of sun rays based on this value
-	if (is_load_raydata)
-		SimC._STSim->IntData.nsunrays = nsunrays_loadst;
-	*/
-
 	//Get bounding box and sun ray information to calculate power per ray
 	SimC._STSim->IntData.q_ray = (bounds[1] - bounds[0]) * (bounds[3] - bounds[2]) / float(SimC._STSim->IntData.nsunrays) * dni;
 
@@ -1198,41 +1006,6 @@ bool interop::SolTraceFluxSimulation(SimControl& SimC, sim_results& results, Sol
 		double azzen[2] = { az, PI / 2. - el };
 		results.back().process_raytrace_simulation(SF, P, 2, azzen, helios, SimC._STSim->IntData.q_ray, SimC._STSim->IntData.emap, SimC._STSim->IntData.smap, SimC._STSim->IntData.rnum, nint, bounds);
 	}
-
-	/* CHECK:
-	//If the user wants to save stage0 ray data, do so here
-	if (is_save_raydata)
-	{
-		ofstream fout(raydata_file.GetFullPath().ToStdString());
-		fout.clear();
-		//first line is number of sun rays
-		fout << SimC._STSim->IntData.nsunrays << "\n";
-		//write heliostat IN stage
-		for (int i = 0; i < (int)st0datawrap.size(); i++)
-		{
-			for (int j = 0; j < (int)st0datawrap.at(i)->size(); j++)
-			{
-				for (int k = 0; k < 8; k++)
-					fout << st0datawrap.at(i)->at(j).at(k) << ",";
-				fout << "\n";
-			}
-		}
-		//special separator
-		fout << "#\n";
-		//write receiver IN stage
-		for (int i = 0; i < (int)st1datawrap.size(); i++)
-		{
-			for (int j = 0; j < (int)st1datawrap.at(i)->size(); j++)
-			{
-				for (int k = 0; k < 7; k++)
-					fout << st1datawrap.at(i)->at(j).at(k) << ",";
-				fout << "\n";
-			}
-		}
-
-		fout.close();
-	}
-	*/
 
 	//If the user wants to save the ray data, do so here
 	if (vset.flux.save_data.val)
