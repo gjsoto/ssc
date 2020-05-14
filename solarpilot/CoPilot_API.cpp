@@ -984,7 +984,6 @@ SPEXPORT bool sp_detail_results(sp_data_t p_data, sp_number_t* ret, int* nrows, 
     return false;
 }
 
-
 SPEXPORT bool sp_get_fluxmap(sp_data_t p_data, sp_number_t* fluxmap, int* nrows, int* ncols, int rec_id = 0)
 {
 
@@ -1830,7 +1829,6 @@ SPEXPORT bool sp_save_from_script(sp_data_t p_data, const char* sp_fname)
     }
     return false;
 }
-
 
 SPEXPORT bool sp_dump_varmap(sp_data_t p_data, const char* sp_fname)
 {
