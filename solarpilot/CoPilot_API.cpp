@@ -38,12 +38,18 @@ struct api_helper
         simthread = 0;
         //solarfield.getSimInfoObject()->setCallbackFunction()
         sim_control.soltrace_callback = ST_APICallback;
-        sim_control.soltrace_callback_data = this;
+        sim_control.soltrace_callback_data = (void*)this;
         sim_control.message_callback = MessageHandler;
-        sim_control.message_callback_data = this;
+        sim_control.message_callback_data = (void*)this;
 
     };
 };
+
+SPEXPORT void sp_set_callback(sp_data_t p_data, int(*fcallback)(sp_number_t, const char*))
+{
+    api_helper* mc = static_cast<api_helper*>(p_data);
+    mc->external_callback = fcallback;
+}
 
 
 SPEXPORT void sp_cancel_simulation(sp_data_t p_data)
@@ -70,13 +76,18 @@ SPEXPORT void var_free_memory(sp_number_t* varptr)
     delete[] varptr;
 };
 
-SPEXPORT void sp_set_value(sp_data_t p_data, const char* name, sp_number_t v)
+SPEXPORT void sp_set_number(sp_data_t p_data, const char* name, sp_number_t v)
 {
     api_helper *mc = static_cast<api_helper*>(p_data);
+    SimControl* SC = &mc->sim_control;
     
     //make sure the specified variable exists
     if (mc->variables._varptrs.find(name) == mc->variables._varptrs.end())
-        throw std::invalid_argument("No such variable: " + std::string(name));
+    {
+        std::string msg = "No such variable: " + std::string(name) + "\nWARNING: Value was not set!";
+        SC->message_callback(msg.c_str(), SC->message_callback_data);
+        return;
+    }
 
     //create a string copy of the variable name
     std::string sname = (std::string)name;
@@ -94,7 +105,9 @@ SPEXPORT void sp_set_value(sp_data_t p_data, const char* name, sp_number_t v)
         }
         else
         {
-            throw std::invalid_argument("Invalid variable choice for \"" + sname + "\": \"" + my_to_string(v) + "\" is not a valid option.");
+            std::string msg = "Invalid variable choice for \"" + sname + "\": \"" + my_to_string(v) + "\" is not a valid option.";
+            SC->message_callback(msg.c_str(), SC->message_callback_data);
+            return;
         }
     }
     else
@@ -109,10 +122,14 @@ SPEXPORT void sp_set_value(sp_data_t p_data, const char* name, sp_number_t v)
 SPEXPORT void sp_set_string(sp_data_t p_data, const char *name, const char *value)
 {
     api_helper *mc = static_cast<api_helper*>(p_data);
+    SimControl* SC = &mc->sim_control;
+
     std::string sname = (std::string)name;
     if (mc->variables._varptrs.find(name) == mc->variables._varptrs.end())
     {
-        throw std::invalid_argument("No such variable: " + sname);
+        std::string msg = "No such variable: " + std::string(name) + "\nWARNING: Value was not set!";
+        SC->message_callback(msg.c_str(), SC->message_callback_data);
+        return;
     }
     else
     {
@@ -120,19 +137,28 @@ SPEXPORT void sp_set_string(sp_data_t p_data, const char *name, const char *valu
     }
 }
 
-
 /** Assigns value of type SP_VEC_DOUBLE */
 SPEXPORT void sp_set_array(sp_data_t p_data, const char *name, sp_number_t *pvalues, int length)
 {
     api_helper *mc = static_cast<api_helper*>(p_data);
+    SimControl* SC = &mc->sim_control;
 
     //make sure the specified variable exists
     if (mc->variables._varptrs.find(name) == mc->variables._varptrs.end())
-        throw std::invalid_argument("No such variable: " + std::string(name));
+    {
+        std::string msg = "No such variable: " + std::string(name) + "\nWARNING: Value was not set!";
+        SC->message_callback(msg.c_str(), SC->message_callback_data);
+        return;
+    }
+
 
     //make sure the data type of the variable provided matches the internal data type
     if (mc->variables._varptrs.at(name)->dattype != SP_DATTYPE::SP_VEC_DOUBLE)
-        throw std::runtime_error("Data type of " + std::string(name) + " is not compatible with sp_set_array. " + __FILE__ + ":" + my_to_string(__LINE__));
+    {
+        std::string msg = "Data type of " + std::string(name) + " is not compatible with sp_set_array. \n" + __FILE__ + ":" + my_to_string(__LINE__);
+        SC->message_callback(msg.c_str(), SC->message_callback_data);
+        return;
+    }
 
     //create a string copy of the variable name
     std::string sname = (std::string)name;
@@ -158,14 +184,23 @@ SPEXPORT void sp_set_matrix(sp_data_t p_data, const char *name, sp_number_t *pva
     */
 
     api_helper *mc = static_cast<api_helper*>(p_data);
+    SimControl* SC = &mc->sim_control;
 
     //make sure the specified variable exists
     if (mc->variables._varptrs.find(name) == mc->variables._varptrs.end())
-        throw std::invalid_argument("No such variable: " + std::string(name));
+    {
+        std::string msg = "No such variable: " + std::string(name) + "\nWARNING: Value was not set!";
+        SC->message_callback(msg.c_str(), SC->message_callback_data);
+        return;
+    }
 
     //make sure the data type of the variable provided matches the internal data type
     if (mc->variables._varptrs.at(name)->dattype != SP_DATTYPE::SP_MATRIX_T)
-        throw std::runtime_error("Data type of " + std::string(name) + " is not compatible with sp_set_matrix. " + __FILE__ + ":" + my_to_string(__LINE__));
+    {
+        std::string msg = "Data type of " + std::string(name) + " is not compatible with sp_set_matrix. \n" + __FILE__ + ":" + my_to_string(__LINE__);
+        SC->message_callback(msg.c_str(), SC->message_callback_data);
+        return;
+    }
 
     //create a string copy of the variable name
     std::string sname = (std::string)name;
@@ -188,7 +223,6 @@ SPEXPORT void sp_set_matrix(sp_data_t p_data, const char *name, sp_number_t *pva
 
 }
 
-
 SPEXPORT sp_number_t sp_get_number(sp_data_t p_data, const char* name)
 {
     /*
@@ -196,15 +230,23 @@ SPEXPORT sp_number_t sp_get_number(sp_data_t p_data, const char* name)
     */
 
     api_helper *mc = static_cast<api_helper*>(p_data);
+    SimControl* SC = &mc->sim_control;
 
-    if (mc->variables._varptrs.find(name) != mc->variables._varptrs.end())
-        throw std::invalid_argument("No such variable: " + std::string(name));
+    if (mc->variables._varptrs.find(name) == mc->variables._varptrs.end())
+    {
+        std::string msg = "No such variable: " + std::string(name);
+        SC->message_callback(msg.c_str(), SC->message_callback_data);
+        return std::numeric_limits<sp_number_t>::quiet_NaN();
+    }
 
     //make sure the data type of the variable provided matches the internal data type
     int dattype = mc->variables._varptrs.at(name)->dattype;
-    if (dattype != SP_DATTYPE::SP_DOUBLE || dattype != SP_DATTYPE::SP_INT)
-        throw std::runtime_error("Data type of " + std::string(name) + " is not compatible with sp_set_matrix. " + __FILE__ + ":" + my_to_string(__LINE__));
-
+    if (!(dattype == SP_DATTYPE::SP_DOUBLE || dattype == SP_DATTYPE::SP_INT))
+    {
+        std::string msg = "Data type of " + std::string(name) + " is not compatible with sp_get_number. \n" + __FILE__ + " -> line:" + my_to_string(__LINE__);
+        SC->message_callback(msg.c_str(), SC->message_callback_data);
+        return std::numeric_limits<sp_number_t>::quiet_NaN();
+    }
 
     spbase *var = mc->variables._varptrs[name];
 
@@ -226,49 +268,61 @@ SPEXPORT sp_number_t sp_get_number(sp_data_t p_data, const char* name)
         return (sp_number_t)(v->val ? 1. : 0.);
     }
 
-
-    
     default:
         break;
     }
 
 }
 
-
 /** Returns the value of a @a SP_STRING variable with the given name. */
-SPEXPORT const char *ssc_data_get_string(sp_data_t p_data, const char *name)
+SPEXPORT const char *sp_get_string(sp_data_t p_data, const char *name)
 {
     api_helper *mc = static_cast<api_helper*>(p_data);
+    SimControl* SC = &mc->sim_control;
 
-    if (mc->variables._varptrs.find(name) != mc->variables._varptrs.end())
-        throw std::invalid_argument("No such variable: " + std::string(name));
+    if (mc->variables._varptrs.find(name) == mc->variables._varptrs.end())
+    {
+        std::string msg = "No such variable: " + std::string(name);
+        SC->message_callback(msg.c_str(), SC->message_callback_data);
+        return std::numeric_limits<const char*>::quiet_NaN();
+    }
 
     //make sure the data type of the variable provided matches the internal data type
     int dattype = mc->variables._varptrs.at(name)->dattype;
-    if (dattype != SP_DATTYPE::SP_DOUBLE || dattype != SP_DATTYPE::SP_INT)
-        throw std::runtime_error("Data type of " + std::string(name) + " is not compatible with sp_set_matrix. " + __FILE__ + ":" + my_to_string(__LINE__));
-
-
-    return mc->variables._varptrs[name]->as_string().c_str();
+    if (dattype != SP_DATTYPE::SP_STRING)
+    {
+        std::string msg = "Data type of " + std::string(name) + " is not compatible with sp_get_string. \n" + __FILE__ + ":" + my_to_string(__LINE__);
+        SC->message_callback(msg.c_str(), SC->message_callback_data);
+        return std::numeric_limits<const char*>::quiet_NaN();
+    }
+    return mc->variables._varptrs.at(name)->as_string().c_str();
 }
 
-
 /** Returns the value of a @a SSC_ARRAY variable with the given name. */
-SPEXPORT void sp_get_array(sp_data_t p_data, const char *name, sp_number_t* values, int *length)
+SPEXPORT sp_number_t *sp_get_array(sp_data_t p_data, const char *name, int *length)
 {
     /*
     Populates 'value_array' with 'length' entries
     */
 
     api_helper *mc = static_cast<api_helper*>(p_data);
+    SimControl* SC = &mc->sim_control;
 
-    if (mc->variables._varptrs.find(name) != mc->variables._varptrs.end())
-        throw std::invalid_argument("No such variable: " + std::string(name));
+    if (mc->variables._varptrs.find(name) == mc->variables._varptrs.end())
+    {
+        std::string msg = "No such variable: " + std::string(name);
+        SC->message_callback(msg.c_str(), SC->message_callback_data);
+        return std::numeric_limits<sp_number_t*>::quiet_NaN();
+    }
 
     //make sure the data type of the variable provided matches the internal data type
     int dattype = mc->variables._varptrs.at(name)->dattype;
-    if (dattype != SP_DATTYPE::SP_VEC_DOUBLE || dattype != SP_DATTYPE::SP_VEC_INTEGER)
-        throw std::runtime_error("Data type of " + std::string(name) + " is not compatible with sp_get_array. " + __FILE__ + ":" + my_to_string(__LINE__));
+    if (!(dattype == SP_DATTYPE::SP_VEC_DOUBLE || dattype == SP_DATTYPE::SP_VEC_INTEGER))
+    {
+        std::string msg = "Data type of " + std::string(name) + " is not compatible with sp_get_array. \n" + __FILE__ + ":" + my_to_string(__LINE__);
+        SC->message_callback(msg.c_str(), SC->message_callback_data);
+        return std::numeric_limits<sp_number_t*>::quiet_NaN();
+    }
 
     spbase *var = mc->variables._varptrs[name];
     std::string varstr = var->as_string();
@@ -278,7 +332,7 @@ SPEXPORT void sp_get_array(sp_data_t p_data, const char *name, sp_number_t* valu
     spbase::_setv(varstr, Vd);
 
     //allocate space at the value_array pointer
-    values = new sp_number_t[(int)Vd.size()];
+    sp_number_t *values = new sp_number_t[(int)Vd.size()];
     //set length for return
     *length = (int)Vd.size();
 
@@ -286,24 +340,33 @@ SPEXPORT void sp_get_array(sp_data_t p_data, const char *name, sp_number_t* valu
     for (size_t i = 0; i < *length; i++)
         values[i] = Vd.at(i);
 
+    return values;
 }
 
-
-SPEXPORT void sp_get_matrix(sp_data_t p_data, const char *name, sp_number_t* values, int *ncols, int *nrows)
+SPEXPORT sp_number_t *sp_get_matrix(sp_data_t p_data, const char *name, int *nrows, int* ncols)
 {
     /*
     Populates 'value_array' with 'length' entries
     */
 
     api_helper *mc = static_cast<api_helper*>(p_data);
+    SimControl* SC = &mc->sim_control;
 
-    if (mc->variables._varptrs.find(name) != mc->variables._varptrs.end())
-        throw std::invalid_argument("No such variable: " + std::string(name));
+    if (mc->variables._varptrs.find(name) == mc->variables._varptrs.end())
+    {
+        std::string msg = "No such variable: " + std::string(name);
+        SC->message_callback(msg.c_str(), SC->message_callback_data);
+        return std::numeric_limits<sp_number_t*>::quiet_NaN();
+    }
 
     //make sure the data type of the variable provided matches the internal data type
     int dattype = mc->variables._varptrs.at(name)->dattype;
     if (dattype != SP_DATTYPE::SP_MATRIX_T)
-        throw std::runtime_error("Data type of " + std::string(name) + " is not compatible with sp_get_matrix. " + __FILE__ + ":" + my_to_string(__LINE__));
+    {
+        std::string msg = "Data type of " + std::string(name) + " is not compatible with sp_get_matrix. \n" + __FILE__ + ":" + my_to_string(__LINE__);
+        SC->message_callback(msg.c_str(), SC->message_callback_data);
+        return std::numeric_limits<sp_number_t*>::quiet_NaN();
+    }
 
     spbase *var = mc->variables._varptrs[name];
     std::string varstr = var->as_string();
@@ -313,16 +376,17 @@ SPEXPORT void sp_get_matrix(sp_data_t p_data, const char *name, sp_number_t* val
     spbase::_setv(varstr, Md);
 
     //allocate space at the value_array pointer
-    values = new sp_number_t[(int)(Md.nrows()*Md.ncols())];
+    sp_number_t* values = new sp_number_t[(int)(Md.nrows()*Md.ncols())];
     //set lengths for return
     *ncols = Md.ncols();
     *nrows = Md.nrows();
 
     //convert to to return format
     for (size_t i = 0; i < *nrows; i++)
-        for (size_t j = 0; j < *ncols; i++)
-        values[j + (*ncols)*i] = Md.at(i,j);
+        for (size_t j = 0; j < *ncols; j++)
+            values[j + (*ncols)*i] = Md.at(i,j);
 
+    return values;
 }
 
 SPEXPORT void sp_reset_geometry(sp_data_t p_data)
@@ -344,6 +408,7 @@ SPEXPORT int sp_add_receiver(sp_data_t p_data, const char* receiver_name)
     */
 
     api_helper* mc = static_cast<api_helper*>(p_data);
+    SimControl* SC = &mc->sim_control;
 
     std::string tname = std::string(receiver_name);
     var_map* V = &mc->variables;
@@ -357,7 +422,8 @@ SPEXPORT int sp_add_receiver(sp_data_t p_data, const char* receiver_name)
     }
     if (dupe)
     {
-        throw std::runtime_error("Please enter a unique name for this geometry.");
+        std::string msg = "Receiver name '" + tname + "' is not unique.  Please enter a unique name for this geometry.";
+        SC->message_callback(msg.c_str(), SC->message_callback_data);
         return 0;
     }
 
@@ -386,10 +452,11 @@ SPEXPORT int sp_drop_receiver(sp_data_t p_data, const char* receiver_name)
 
     api_helper *mc = static_cast<api_helper*>(p_data);
     var_map* V = &mc->variables;
+    SimControl* SC = &mc->sim_control;
 
     std::string tname = lower_case(std::string(receiver_name));
 
-    for (size_t i = 0; i < V->hels.size(); i++)
+    for (size_t i = 0; i < V->recs.size(); i++)
     {
         if (tname == lower_case(V->recs.at(i).rec_name.val))
         {
@@ -400,6 +467,8 @@ SPEXPORT int sp_drop_receiver(sp_data_t p_data, const char* receiver_name)
         }
     }
 
+    std::string msg = "Receiver name '" + tname + "' was not found.";
+    SC->message_callback(msg.c_str(), SC->message_callback_data);
     return 0.;
 }
 
@@ -413,6 +482,7 @@ SPEXPORT int sp_add_heliostat_template(sp_data_t p_data, const char* heliostat_n
     //Add a heliostat
     api_helper *mc = static_cast<api_helper*>(p_data);
     var_map* V = &mc->variables;
+    SimControl* SC = &mc->sim_control;
 
     //string tname = cxt.arg(0).as_string();
     std::string tname = std::string(heliostat_name);
@@ -424,7 +494,8 @@ SPEXPORT int sp_add_heliostat_template(sp_data_t p_data, const char* heliostat_n
     }
     if (dupe)
     {
-        throw std::runtime_error("Please enter a unique name for this heliostat template.");
+        std::string msg = "Heliostat name '" + tname + "' is not unique.  Please enter a unique name for this heliostat template.";
+        SC->message_callback(msg.c_str(), SC->message_callback_data);
         return 0;
     }
 
@@ -448,6 +519,8 @@ SPEXPORT int sp_drop_heliostat_template(sp_data_t p_data, const char* heliostat_
 
     api_helper *mc = static_cast<api_helper*>(p_data);
     var_map* V = &mc->variables;
+    SimControl* SC = &mc->sim_control;
+
 
     std::string tname = lower_case(std::string(heliostat_name));
 
@@ -461,7 +534,8 @@ SPEXPORT int sp_drop_heliostat_template(sp_data_t p_data, const char* heliostat_
             return 1;
         }
     }
-
+    std::string msg = "Heliostat template name '" + tname + "' was not found.";
+    SC->message_callback(msg.c_str(), SC->message_callback_data);
     return 0;
 }
 
@@ -1026,7 +1100,6 @@ SPEXPORT bool sp_get_fluxmap(sp_data_t p_data, sp_number_t* fluxmap, int* nrows,
     }
     return true;
 }
-
 
 //TODO: Skipped this function initially 
 SPEXPORT void sp_optimize(sp_data_t p_data, sp_number_t* pvalues, int nvar)
@@ -1932,7 +2005,8 @@ int MessageHandler(const char* message, void* data)
     //std::string mymessage(message);
     //api->message_log.push_back(mymessage);
 
-    api->external_callback(0., message);
+    //TODO: NEED to fix
+    (*api->external_callback)((sp_number_t)0., message);
     return 1;
 }
 

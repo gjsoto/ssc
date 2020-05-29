@@ -22,7 +22,9 @@ extern "C" {
     typedef void* sp_data_t;
 
     /** The numeric type used in the SolarPILOT API. */ 
-    typedef float sp_number_t;
+    typedef double sp_number_t;
+
+    SPEXPORT void sp_set_callback(sp_data_t p_data, int (*)(sp_number_t, const char*));
 
     SPEXPORT void sp_cancel_simulation(sp_data_t p_data);
 
@@ -34,7 +36,7 @@ extern "C" {
 
     SPEXPORT void var_free_memory(sp_number_t* varptr);
 
-    SPEXPORT void sp_set_value(sp_data_t p_data, const char* name, sp_number_t v);
+    SPEXPORT void sp_set_number(sp_data_t p_data, const char* name, sp_number_t v);
 
     SPEXPORT void sp_set_string(sp_data_t p_data, const char *name, const char *value);
 
@@ -47,12 +49,13 @@ extern "C" {
     SPEXPORT sp_number_t sp_get_number(sp_data_t p_data, const char* name);
 
     /** Returns the value of a @a SSC_STRING variable with the given name. */
-    SPEXPORT const char *ssc_data_get_string(sp_data_t p_data, const char *name);
+    SPEXPORT const char *sp_get_string(sp_data_t p_data, const char *name);
 
     /** Returns the value of a @a SSC_ARRAY variable with the given name. */
-    SPEXPORT void sp_get_array(sp_data_t p_data, const char *name, sp_number_t* values, int *length);
+    SPEXPORT sp_number_t* sp_get_array(sp_data_t p_data, const char* name, int* length);
+    //SPEXPORT void sp_get_array(sp_data_t p_data, const char *name, sp_number_t* values, int *length);
 
-    SPEXPORT void sp_get_matrix(sp_data_t p_data, const char* name, sp_number_t* values, int* ncols, int* nrows);
+    SPEXPORT sp_number_t* sp_get_matrix(sp_data_t p_data, const char* name, int* ncols, int* nrows);
 
     SPEXPORT void sp_reset_geometry(sp_data_t p_data);
 
