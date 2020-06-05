@@ -73,13 +73,16 @@ extern "C" {
 
     SPEXPORT bool sp_assign_layout(sp_data_t p_data, sp_number_t* pvalues, int nrows, int ncols, int nthreads);
 
-    SPEXPORT bool sp_get_layout_info(sp_data_t p_data, sp_number_t* layoutinfo, int* nhelio, int* ncol);
+    SPEXPORT sp_number_t* sp_get_layout_info(sp_data_t p_data, int* nhelio, int* ncol);
 
     SPEXPORT bool sp_simulate(sp_data_t p_data, int nthreads, bool save_detail, bool update_aimpoints);
 
     SPEXPORT const char* sp_summary_results(sp_data_t p_data);
 
-    SPEXPORT bool sp_detail_results(sp_data_t p_data, sp_number_t* ret, int* nrows, int* ncols, const char* header, sp_number_t* selhel, int nselhel);
+    SPEXPORT sp_number_t* sp_detail_results(sp_data_t p_data, int* nrows, int* ncols, sp_number_t* selhel, int nselhel);
+    //SPEXPORT sp_number_t* sp_detail_results(sp_data_t p_data, int* nrows, int* ncols, const char* header, sp_number_t* selhel, int nselhel);
+
+    SPEXPORT const char* sp_detail_results_header();
 
     SPEXPORT bool sp_get_fluxmap(sp_data_t p_data, sp_number_t* fluxmap, int* nrows, int* ncols, int rec_id);
 

@@ -89,9 +89,20 @@ SPEXPORT void sp_set_number(sp_data_t p_data, const char* name, sp_number_t v)
         return;
     }
 
+    //make sure the data type of the variable provided matches the internal data type
+    int dattype = mc->variables._varptrs.at(name)->dattype;
+    if (!(dattype == SP_DATTYPE::SP_DOUBLE || dattype == SP_DATTYPE::SP_INT))
+    {
+        std::string msg = ("Data type of " + std::string(name) + " is not compatible with sp_get_number. \n "
+                                + __FILE__ + " -> line:" + my_to_string(__LINE__) );
+        SC->message_callback(msg.c_str(), SC->message_callback_data);
+        return;
+    }
+
     //create a string copy of the variable name
     std::string sname = (std::string)name;
 
+    // TODO: This doesn't work for int combos
     //if it's a combo, make sure the specified combo choice exists
     if (mc->variables._varptrs.at(sname)->ctype == "combo")
     {
@@ -135,6 +146,34 @@ SPEXPORT void sp_set_string(sp_data_t p_data, const char *name, const char *valu
     {
         mc->variables._varptrs.at(sname)->set_from_string(value);
     }
+    
+
+    ////if it's a combo, make sure the specified combo choice exists
+    //if (mc->variables._varptrs.at(sname)->ctype == "combo")
+    //{
+    //    std::string svalue = my_to_string(value);
+
+    //    std::vector< std::string > cbchoices = mc->variables._varptrs.at(sname)->combo_get_choices();
+    //    if (std::find(cbchoices.begin(), cbchoices.end(), svalue) != cbchoices.end())
+    //    {
+    //        //valid variable and selection
+    //        mc->variables._varptrs.at(sname)->set_from_string(svalue.c_str());
+    //    }
+    //    else
+    //    {
+    //        std::string msg = "Invalid variable choice for \"" + sname + "\": \"" + my_to_string(value) + "\" is not a valid option.";
+    //        SC->message_callback(msg.c_str(), SC->message_callback_data);
+    //        return;
+    //    }
+    //}
+    //else
+    //{
+    //    //no problems, just set the variable
+    //    std::string svalue = my_to_string(value);
+    //    mc->variables._varptrs.at(sname)->set_from_string(svalue.c_str());
+    //    return;
+    //}
+
 }
 
 /** Assigns value of type SP_VEC_DOUBLE */
@@ -295,7 +334,8 @@ SPEXPORT const char *sp_get_string(sp_data_t p_data, const char *name)
         SC->message_callback(msg.c_str(), SC->message_callback_data);
         return std::numeric_limits<const char*>::quiet_NaN();
     }
-    return mc->variables._varptrs.at(name)->as_string().c_str();
+    std::string ret = mc->variables._varptrs.at(name)->as_string();
+    return strdup(ret.c_str());
 }
 
 /** Returns the value of a @a SSC_ARRAY variable with the given name. */
@@ -549,11 +589,13 @@ SPEXPORT int sp_update_geometry(sp_data_t p_data)
     api_helper *mc = static_cast<api_helper*>(p_data);
     var_map* V = &mc->variables;
     SolarField* SF = &mc->solarfield;
+    SimControl* SC = &mc->sim_control;
     
     if (SF->getHeliostats()->size() == 0)
     {
         //no layout exists, so we should be calling the 'run_layout' method instead
-        std::runtime_error("No layout exists, so the 'update_geometry' function cannot be executed. Please first create or import a layout using 'run_layout'.");
+        std::string msg = "No layout exists, so the 'update_geometry' function cannot be executed. Please first create or import a layout using 'run_layout'.";
+        SC->message_callback(msg.c_str(), SC->message_callback_data);
         return 0;
     }
 
@@ -599,7 +641,8 @@ SPEXPORT int sp_update_geometry(sp_data_t p_data)
 
         if (mc->solarfield.ErrCheck())
         {
-            std::runtime_error("An error occurred when preparing the updated field geometry in the call 'update_geometry'.");
+            std::string msg = "An error occurred when preparing the updated field geometry in the call 'update_geometry'.";
+            SC->message_callback(msg.c_str(), SC->message_callback_data);
             return 0;
         }
 
@@ -614,19 +657,21 @@ SPEXPORT int sp_update_geometry(sp_data_t p_data)
 
         if (SF->ErrCheck())
         {
-            std::runtime_error("An error occurred when preparing the updated field geometry in the call 'update_geometry'.");
+            std::string msg = "An error occurred when preparing the updated field geometry in the call 'update_geometry'.";
+            SC->message_callback(msg.c_str(), SC->message_callback_data);
             return 0;
         }
     }
     catch (std::exception &e)
     {
-        std::runtime_error("An error occurred when preparing the updated field geometry in the call 'update_geometry'. Error:\n");
-        std::runtime_error(e.what());
+        std::string msg = "An error occurred when preparing the updated field geometry in the call 'update_geometry'. \n ERROR: "+ (std::string)e.what();
+        SC->message_callback(msg.c_str(), SC->message_callback_data);
         return 0;
     }
     catch (...)
     {
-        std::runtime_error("Unknown error when executing 'update_geometry'.");
+        std::string msg = "Unknown error when executing 'update_geometry'.";
+        SC->message_callback(msg.c_str(), SC->message_callback_data);
         return 0;
     }
 
@@ -643,8 +688,8 @@ SPEXPORT bool sp_generate_layout(sp_data_t p_data, int nthreads = 0) //, bool sa
     */
 
     api_helper *mc = static_cast<api_helper*>(p_data);
-    var_map* V = &mc->variables;
     SolarField* SF = &mc->solarfield;
+    var_map* V = &mc->variables;
 
     SimControl* SC = &mc->sim_control;
     LayoutSimThread* SThread = mc->simthread;
@@ -657,6 +702,8 @@ SPEXPORT bool sp_generate_layout(sp_data_t p_data, int nthreads = 0) //, bool sa
 
     //TODO:Is this needed?  I dont think so. It updates Design page in UI
     //F.UpdateDesignSelect(V->sf.des_sim_detail.mapval(), *V);
+
+    //I think this function needs to be accessed by the API.  
 
     SF->Clean();
     SF->Create(*V);
@@ -703,7 +750,7 @@ SPEXPORT bool sp_assign_layout(sp_data_t p_data, sp_number_t* pvalues, int nrows
     return simok;
 }
 
-SPEXPORT bool sp_get_layout_info(sp_data_t p_data, sp_number_t *layoutinfo, int* nhelio, int* ncol)
+SPEXPORT sp_number_t* sp_get_layout_info(sp_data_t p_data, int* nhelio, int* ncol)
 {
     /*
     Get information regarding the heliostat field layout. Returns matrix with each row corresponding to a heliostat.
@@ -722,29 +769,31 @@ SPEXPORT bool sp_get_layout_info(sp_data_t p_data, sp_number_t *layoutinfo, int*
     *nhelio = hels->size();
     *ncol = 6;
 
-    layoutinfo = new sp_number_t[(*nhelio) * (*ncol)];
+    sp_number_t* layoutinfo = new sp_number_t[(*nhelio) * (*ncol)];
 
     int c;
     for (size_t i = 0; i < (int)hels->size(); i++)
     {
-        sp_point* loc = hels->at(i)->getLocation();
+        Heliostat* hel = hels->at(i);
+        sp_point* loc = hel->getLocation();
 
-        c = 0;  layoutinfo[i * (*ncol) + c] = hels->at(i)->getId();
+        c = 0;  layoutinfo[i * (*ncol) + c] = hel->getId();
         c++;  layoutinfo[i * (*ncol) + c] = loc->x;
         c++;  layoutinfo[i * (*ncol) + c] = loc->y;
         c++;  layoutinfo[i * (*ncol) + c] = loc->z;
-        c++;  layoutinfo[i * (*ncol) + c] = hels->at(i)->getMasterTemplate()->getVarMap()->id.val;
-        c++;  layoutinfo[i * (*ncol) + c] = hels->at(i)->getRankingMetricValue();
+        c++;  layoutinfo[i * (*ncol) + c] = hel->getMasterTemplate()->getVarMap()->id.val;
+        c++;  layoutinfo[i * (*ncol) + c] = hel->getRankingMetricValue();
 
         if ((i == 0) && (c != *ncol - 1))
         {
-            SC->message_callback("Information was lost check sp_get_layout_info output formating.", SC->message_callback_data);
+            std::string msg = "Information was lost check sp_get_layout_info output formating.";
+            SC->message_callback(msg.c_str(), SC->message_callback_data);
             delete[] layoutinfo;
-            return false;
+            return nullptr;
         }
     }
 
-    return true;
+    return layoutinfo;
 }
 
 SPEXPORT bool sp_simulate(sp_data_t p_data, int nthreads = 1, bool save_detail = true, bool update_aimpoints = true)
@@ -765,7 +814,7 @@ SPEXPORT bool sp_simulate(sp_data_t p_data, int nthreads = 1, bool save_detail =
     if (nthreads != 1)
         SC->SetThreadCount(nthreads);
     
-    if (update_aimpoints != true)
+    if (update_aimpoints == false)
         V->flux.aim_method.combo_select("Keep existing");
 
     //Which type of simulation is this?
@@ -784,8 +833,7 @@ SPEXPORT bool sp_simulate(sp_data_t p_data, int nthreads = 1, bool save_detail =
     res->clear();
     res->resize(1);
 
-    //TODO: Start a timer -> this uses wxTimerRunner
-    //F.StartSimTimer();
+    // start timer
     std::clock_t start;
     double duration;
 
@@ -806,7 +854,7 @@ SPEXPORT bool sp_simulate(sp_data_t p_data, int nthreads = 1, bool save_detail =
         break;
     }
 
-    //F.StopSimTimer();
+    //End timer
     duration = (std::clock() - start) / (double)CLOCKS_PER_SEC;
     std::string msg = "Simulation total time:" + std::to_string(duration) + " seconds";
     SC->message_callback(msg.c_str(), SC->message_callback_data);
@@ -905,13 +953,14 @@ SPEXPORT const char *sp_summary_results(sp_data_t p_data)
         double eta_a = res_map.at("Absorption efficiency") / 100.;
         ret.append("Absorption loss, " + std::to_string(Qwf*(1. - eta_a)) + "\n");
 
-        ret.append("Receiver name, " + i == 0 ? "All receivers" : results->at(i).receiver_names.front() + "\n\n\n");
+        ret.append("Receiver name, " + (i == 0 ? "All receivers" : results->at(i).receiver_names.front() ) );
     }
 
-    return ret.c_str();
+    return strdup(ret.c_str());
 }
 
-SPEXPORT bool sp_detail_results(sp_data_t p_data, sp_number_t* ret, int* nrows, int* ncols, const char* header, sp_number_t* selhel = NULL, int nselhel = 0)
+
+SPEXPORT sp_number_t* sp_detail_results(sp_data_t p_data, int* nrows, int* ncols, sp_number_t* selhel = NULL, int nselhel = 0)
 {
     /*
     returns a vector with hash entries for each heliostat
@@ -949,7 +998,7 @@ SPEXPORT bool sp_detail_results(sp_data_t p_data, sp_number_t* ret, int* nrows, 
     {
         Hvector helio_select;
 
-        if (selhel != NULL) //use selected heliostats
+        if (nselhel != 0) //use selected heliostats
         {
             std::vector<int> ids;
             ids.reserve(nselhel);
@@ -974,7 +1023,7 @@ SPEXPORT bool sp_detail_results(sp_data_t p_data, sp_number_t* ret, int* nrows, 
         *ncols = 23;  //number of results in table
 
         //loop through selected heliostats, gathering information
-        ret = new sp_number_t[(*nrows) * (*ncols)];
+        sp_number_t* ret = new sp_number_t[(*nrows) * (*ncols)];
 
         int c;
         for (size_t i = 0; i < helio_select.size(); i++)
@@ -982,6 +1031,8 @@ SPEXPORT bool sp_detail_results(sp_data_t p_data, sp_number_t* ret, int* nrows, 
             //select specific heliostat object
             Heliostat* H = helio_select.at(i);
 
+            // NOTE: If the order of this is change or if data is added or removed, then
+            //              update ncols (above) and sp_detail_results_header() (below)
             c = 0; ret[i*(*ncols) + c] = H->getId();
             c++; ret[i * (*ncols) + c] = H->getLocation()->x;
             c++; ret[i * (*ncols) + c] = H->getLocation()->y;
@@ -1019,43 +1070,47 @@ SPEXPORT bool sp_detail_results(sp_data_t p_data, sp_number_t* ret, int* nrows, 
             {
                 SC->message_callback("Information was lost check sp_detail_results output formating.", SC->message_callback_data);
                 delete[] ret;
-                return false;
+                return nullptr;
             }
+           
         }
 
-        std::string tab_header;
-
-        // UPDATE: If table results change
-        tab_header.append("id,");
-        tab_header.append("x_location,");
-        tab_header.append("y_location,");
-        tab_header.append("z_location,");
-        tab_header.append("x_aimpoint,");
-        tab_header.append("y_aimpoint,");
-        tab_header.append("z_aimpoint,");
-        tab_header.append("i_tracking_vector,");
-        tab_header.append("j_tracking_vector,");
-        tab_header.append("k_tracking_vector,");
-        tab_header.append("layout_metric,");
-        tab_header.append("power_to_receiver,");
-        tab_header.append("power_reflected,");
-        tab_header.append("energy,");
-        tab_header.append("efficiency_annual,");
-        tab_header.append("efficiency,");
-        tab_header.append("cosine,");
-        tab_header.append("intercept,");
-        tab_header.append("reflectance,");
-        tab_header.append("attenuation,");
-        tab_header.append("blocking,");
-        tab_header.append("shading,");
-        tab_header.append("clouds");
-
-        header = tab_header.c_str();
-
-        return true;
+        return ret;
     }
 
-    return false;
+    return nullptr;
+}
+
+SPEXPORT const char* sp_detail_results_header()
+{
+    std::string tab_header;
+
+    // UPDATE: If table results change
+    tab_header.append("id,");
+    tab_header.append("x_location,");
+    tab_header.append("y_location,");
+    tab_header.append("z_location,");
+    tab_header.append("x_aimpoint,");
+    tab_header.append("y_aimpoint,");
+    tab_header.append("z_aimpoint,");
+    tab_header.append("i_tracking_vector,");
+    tab_header.append("j_tracking_vector,");
+    tab_header.append("k_tracking_vector,");
+    tab_header.append("layout_metric,");
+    tab_header.append("power_to_receiver,");
+    tab_header.append("power_reflected,");
+    tab_header.append("energy,");
+    tab_header.append("efficiency_annual,");
+    tab_header.append("efficiency,");
+    tab_header.append("cosine,");
+    tab_header.append("intercept,");
+    tab_header.append("reflectance,");
+    tab_header.append("attenuation,");
+    tab_header.append("blocking,");
+    tab_header.append("shading,");
+    tab_header.append("clouds");
+
+    return strdup(tab_header.c_str());
 }
 
 SPEXPORT bool sp_get_fluxmap(sp_data_t p_data, sp_number_t* fluxmap, int* nrows, int* ncols, int rec_id = 0)
@@ -1920,7 +1975,6 @@ SPEXPORT bool sp_dump_varmap(sp_data_t p_data, const char* sp_fname)
         return false;
     }
 
-    //var_map *V = SPFrame::Instance().GetSolarFieldObject()->getVarMap();
 
     try
     {
@@ -1992,10 +2046,15 @@ int ST_APICallback(st_uint_t ntracedtotal, st_uint_t ntraced, st_uint_t ntotrace
     */
     api_helper* api= static_cast<api_helper*>(data);
 
-    std::string messages = join(api->message_log, "\n");
+    std::string messages = "";
+    if (api->message_log.size() != 0)
+    {
+        messages = join(api->message_log, "\n");
+    }
     api->message_log.clear();
     
-    return api->external_callback((sp_number_t)((double)ntraced / (double)(std::max((int)ntracedtotal, 1))), messages.c_str());
+    (*api->external_callback)((sp_number_t)((double)ntraced / (double)(std::max((int)ntracedtotal, 1))), messages.c_str());
+    return 1;
 };
 
 int MessageHandler(const char* message, void* data)

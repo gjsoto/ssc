@@ -874,7 +874,10 @@ bool interop::SolTraceFluxSimulation(SimControl& SimC, sim_results& results, Sol
 			}
 
 			//SolTraceProgressUpdate(ntotal, ntraced, ntotrace, stagenum, nstages, (void*)NULL);
-			SimC.soltrace_callback(ntotal, ntraced, ntotrace, stagenum, nstages, (void*)NULL);
+			//SimC.soltrace_callback(ntotal, ntraced, ntotrace, stagenum, nstages, (void*)NULL);
+			//TODO: This doesn't seem to be updating progress
+			SimC.soltrace_callback(ntotal, ntraced, ntotrace, stagenum, nstages, SimC.soltrace_callback_data);
+
 
 			// if dialog's cancel button was pressed, send cancel signal to all threads
 			if (SimC._cancel_simulation)
@@ -1013,14 +1016,16 @@ bool interop::SolTraceFluxSimulation(SimControl& SimC, sim_results& results, Sol
 		string fname = vset.flux.save_data_loc.val;
 		if (fname == "")
 		{
-			SimC.message_callback("Notice: Ray data was not saved. No file was specified.", SimC.message_callback_data);
+			std::string msg = "Notice: Ray data was not saved. No file was specified.";
+			SimC.message_callback(msg.c_str(), SimC.message_callback_data);
 		}
 		else
 		{
 			FILE* file = fopen(fname.c_str(), "w");
 			if (!file)
 			{
-				SimC.message_callback("File Error: Error opening the flux simulation output file. Please make sure the file is closed and the directory is not write-protected.", SimC.message_callback_data);
+				std::string msg = "File Error: Error opening the flux simulation output file. Please make sure the file is closed and the directory is not write-protected.";
+				SimC.message_callback(msg.c_str(), SimC.message_callback_data);
 				return false;
 			}
 			fprintf(file, "Pos X, Pos Y, Pos Z, Cos X, Cos Y, Cos Z, Element Map, Stage Map, Ray Number\n");
@@ -1202,7 +1207,8 @@ bool interop::DoManagedLayout(SimControl& SimC, SolarField& SF, var_map& V, Layo
 	//Make sure the solar field has been created
 	if (SF.getVarMap() == 0)
 	{
-		SimC.message_callback("Error: The solar field Create() method must be called before generating the field layout.", SimC.message_callback_data);
+		std::string msg = "Error: The solar field Create() method must be called before generating the field layout.";
+		SimC.message_callback(msg.c_str(), SimC.message_callback_data);
 		return false;
 	}
 
