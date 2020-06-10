@@ -84,7 +84,7 @@ extern "C" {
 
     SPEXPORT const char* sp_detail_results_header();
 
-    SPEXPORT bool sp_get_fluxmap(sp_data_t p_data, sp_number_t* fluxmap, int* nrows, int* ncols, int rec_id);
+    SPEXPORT sp_number_t* sp_get_fluxmap(sp_data_t p_data, int* nrows, int* ncols, int rec_id);
 
     SPEXPORT void sp_optimize(sp_data_t p_data, sp_number_t* pvalues, int nvar);
 
@@ -92,8 +92,8 @@ extern "C" {
 
     SPEXPORT bool sp_add_land(sp_data_t p_data, const char* type, sp_number_t* polygon_points, int* npts, int* ndim, bool is_append);
 
-    SPEXPORT bool sp_heliostats_by_region(sp_data_t p_data, sp_number_t* retvec, int* lenret, const char* coor_sys,
-                                            sp_number_t* arguments, int* len_arg, const char* svgfname_data, sp_number_t* svg_opt_tab);
+    SPEXPORT sp_number_t* sp_heliostats_by_region(sp_data_t p_data, const char* coor_sys, int* lenret,
+                                    sp_number_t* arguments, int* len_arg, const char* svgfname_data, sp_number_t* svg_opt_tab);
 
     SPEXPORT bool sp_modify_heliostats(sp_data_t p_data, sp_number_t* helio_data, int* nhel, int* ncols, const char* table_hdr);
 

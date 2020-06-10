@@ -1113,9 +1113,8 @@ SPEXPORT const char* sp_detail_results_header()
     return strdup(tab_header.c_str());
 }
 
-SPEXPORT bool sp_get_fluxmap(sp_data_t p_data, sp_number_t* fluxmap, int* nrows, int* ncols, int rec_id = 0)
+SPEXPORT sp_number_t* sp_get_fluxmap(sp_data_t p_data, int* nrows, int* ncols, int rec_id = 0)
 {
-
     /*
 	Retrieve the receiver fluxmap, optionally specifying the receiver ID to retrieve.
 	Returns: ([integer:receiver id]):array
@@ -1129,7 +1128,7 @@ SPEXPORT bool sp_get_fluxmap(sp_data_t p_data, sp_number_t* fluxmap, int* nrows,
     if (rec_id != 0)
     {
         if (rec_id > SF->getReceivers()->size() - 1)
-            return false;
+            return nullptr;
 
         rec = SF->getReceivers()->at(rec_id);
     }
@@ -1140,20 +1139,20 @@ SPEXPORT bool sp_get_fluxmap(sp_data_t p_data, sp_number_t* fluxmap, int* nrows,
 
     FluxGrid *fg = rec->getFluxSurfaces()->front().getFluxMap();
 
-    *nrows = fg->size();
-    *ncols = fg->front().size();
-    fluxmap = new sp_number_t[(*nrows) * (*ncols)];
+    *nrows = fg->front().size();
+    *ncols = fg->size();
+    sp_number_t* fluxmap = new sp_number_t[(*nrows) * (*ncols)];
 
     //rows
-    for (size_t i = 0; i < fg->size(); i++)
+    for (size_t i = 0; i < fg->front().size(); i++)
     {
         //cols
-        for (size_t j = 0; j < fg->front().size(); j++)
+        for (size_t j = 0; j < fg->size(); j++)
         {
-            fluxmap[i * (*ncols) + j] = fg->at(fg->size()-1-i).at(j).flux;
+            fluxmap[i * (*ncols) + j] = fg->at(fg->size()-1-j).at(i).flux;
         }
     }
-    return true;
+    return fluxmap;
 }
 
 //TODO: Skipped this function initially 
@@ -1466,9 +1465,9 @@ SPEXPORT bool sp_add_land(sp_data_t p_data, const char* type, sp_number_t* polyg
 
 }
 
-SPEXPORT bool sp_heliostats_by_region(sp_data_t p_data, sp_number_t* retvec, int* lenret, const char* coor_sys,
-                                                    sp_number_t* arguments = NULL, int* len_arg = NULL, 
-                                                     const char* svgfname_data = NULL, sp_number_t* svg_opt_tab = NULL)
+SPEXPORT sp_number_t* sp_heliostats_by_region(sp_data_t p_data, const char* coor_sys, int* lenret, 
+                                                sp_number_t* arguments = NULL, int* len_arg = NULL, 
+                                                const char* svgfname_data = NULL, sp_number_t* svg_opt_tab = NULL)
 {
     /*
     Returns heliostats that fall within a region. Options are:
@@ -1480,7 +1479,7 @@ SPEXPORT bool sp_heliostats_by_region(sp_data_t p_data, sp_number_t* retvec, int
     >> svgfile (provide string filename, optional table {'offset'=array, 'scale'=array}).
     (string:system, variant:region info[, string:return info - id/location])
 
-    Returns an array of included heliostat ID's or locations. : array
+    Returns an array of included heliostat ID's and locations. : array
     */
 
     api_helper* mc = static_cast<api_helper*>(p_data);
@@ -1492,10 +1491,14 @@ SPEXPORT bool sp_heliostats_by_region(sp_data_t p_data, sp_number_t* retvec, int
     std::string system = (std::string) coor_sys;
 
     //return vector -> length is unknown a priori
-    std::vector<double>* ret;
+    std::vector<double> ret;
 
     if (helios->size() < 1)
-        return false;
+    {
+        std::string msg = "ERROR: sp_heliostats_by_region requires a pre-existing field to be modified.";
+        SC->message_callback(msg.c_str(), SC->message_callback_data);
+        return nullptr;
+    }
 
     double delta = 0.0001;
 
@@ -1503,17 +1506,19 @@ SPEXPORT bool sp_heliostats_by_region(sp_data_t p_data, sp_number_t* retvec, int
     {
         for (size_t i = 0; i < helios->size(); i++)
         {
-            ret->push_back((double)helios->at(i)->getId());
-            ret->push_back(helios->at(i)->getLocation()->x);
-            ret->push_back(helios->at(i)->getLocation()->y);
-            ret->push_back(helios->at(i)->getLocation()->z);
+            Heliostat* helio = helios->at(i);
+
+            ret.push_back((double)helio->getId());
+            ret.push_back(helio->getLocation()->x);
+            ret.push_back(helio->getLocation()->y);
+            ret.push_back(helio->getLocation()->z);
         }
     }
     else if (lower_case(system) == "cylindrical")
     {
         double rmin, rmax, azmin, azmax;
         if (*len_arg != 4)
-            return false;
+            return nullptr;
      
         rmin = arguments[0] - delta;
         rmax = arguments[1] + delta;
@@ -1530,18 +1535,18 @@ SPEXPORT bool sp_heliostats_by_region(sp_data_t p_data, sp_number_t* retvec, int
                     if (apos > azmin)
                         if (apos < azmax)
                         {
-                            ret->push_back((double)helios->at(i)->getId());
-                            ret->push_back(helios->at(i)->getLocation()->x);
-                            ret->push_back(helios->at(i)->getLocation()->y);
-                            ret->push_back(helios->at(i)->getLocation()->z);
+                            ret.push_back((double)helios->at(i)->getId());
+                            ret.push_back(helios->at(i)->getLocation()->x);
+                            ret.push_back(helios->at(i)->getLocation()->y);
+                            ret.push_back(helios->at(i)->getLocation()->z);
                         }
         }
 
     }
     else if (lower_case(system) == "cartesian")
     {
-        if ((*len_arg != 4) || (*len_arg != 6))
-            return false;
+        if ((*len_arg != 4) && (*len_arg != 6))
+            return nullptr;
 
         double xmin, xmax, ymin, ymax, zmin, zmax;
         xmin = arguments[0] - delta;
@@ -1571,10 +1576,10 @@ SPEXPORT bool sp_heliostats_by_region(sp_data_t p_data, sp_number_t* retvec, int
                             if (loc->z > zmin)
                                 if (loc->z < zmax)
                                 {
-                                    ret->push_back((double)helios->at(i)->getId());
-                                    ret->push_back(helios->at(i)->getLocation()->x);
-                                    ret->push_back(helios->at(i)->getLocation()->y);
-                                    ret->push_back(helios->at(i)->getLocation()->z);
+                                    ret.push_back((double)helios->at(i)->getId());
+                                    ret.push_back(helios->at(i)->getLocation()->x);
+                                    ret.push_back(helios->at(i)->getLocation()->y);
+                                    ret.push_back(helios->at(i)->getLocation()->z);
                                 }
         }
     }
@@ -1591,10 +1596,10 @@ SPEXPORT bool sp_heliostats_by_region(sp_data_t p_data, sp_number_t* retvec, int
         {
             if (Toolbox::pointInPolygon(polygon, *helios->at(i)->getLocation()))
             {
-                ret->push_back((double)helios->at(i)->getId());
-                ret->push_back(helios->at(i)->getLocation()->x);
-                ret->push_back(helios->at(i)->getLocation()->y);
-                ret->push_back(helios->at(i)->getLocation()->z);
+                ret.push_back((double)helios->at(i)->getId());
+                ret.push_back(helios->at(i)->getLocation()->x);
+                ret.push_back(helios->at(i)->getLocation()->y);
+                ret.push_back(helios->at(i)->getLocation()->z);
             }
         }
 
@@ -1619,8 +1624,9 @@ SPEXPORT bool sp_heliostats_by_region(sp_data_t p_data, sp_number_t* retvec, int
 
             if (!ioutil::file_exists(svgfname_data))
             {
-                SC->message_callback("Invalid SVG file - not found.", SC->message_callback_data);
-                return false;
+                std::string msg = "Invalid SVG file - not found.";
+                SC->message_callback(msg.c_str(), SC->message_callback_data);
+                return nullptr;
             }
 
             if (svg_opt_tab != NULL)
@@ -1674,8 +1680,9 @@ SPEXPORT bool sp_heliostats_by_region(sp_data_t p_data, sp_number_t* retvec, int
             //get the string data and break it up into units
             if (svgfname_data == NULL)
             {
-                SC->message_callback("svg data must be provided for the svg option.", SC->message_callback_data);
-                return false;
+                std::string msg = "svg data must be provided for the svg option.";
+                SC->message_callback(msg.c_str(), SC->message_callback_data);
+                return nullptr;
             }
             std::string data = (std::string) svgfname_data;
             entries = split(data, ";");
@@ -1720,10 +1727,10 @@ SPEXPORT bool sp_heliostats_by_region(sp_data_t p_data, sp_number_t* retvec, int
 
                 if (Toolbox::pointInPolygon(*polygon, *loc))
                 {
-                    ret->push_back((double)helios->at(i)->getId());
-                    ret->push_back(loc->x);
-                    ret->push_back(loc->y);
-                    ret->push_back(loc->z);
+                    ret.push_back((double)helios->at(i)->getId());
+                    ret.push_back(loc->x);
+                    ret.push_back(loc->y);
+                    ret.push_back(loc->z);
                     //if included, don't need to check other polygons
                     break;
                 }
@@ -1732,16 +1739,17 @@ SPEXPORT bool sp_heliostats_by_region(sp_data_t p_data, sp_number_t* retvec, int
     }
     else
     {
-        SC->message_callback("invalid region type specified. Expecting one of [cylindrical, cartesian, polygon]", SC->message_callback_data);
-        return false;
+        std::string msg = "Invalid region type specified. Expecting one of [cylindrical, cartesian, polygon]";
+        SC->message_callback(msg.c_str(), SC->message_callback_data);
+        return nullptr;
     }
     // pass back size of return vector and vector values
-    *lenret = ret->size();
-    retvec = new sp_number_t[*lenret];
-    for (int i = 0; i < ret->size(); i++)
-        retvec[i] = ret->at(i);
+    *lenret = ret.size();
+    sp_number_t* retvec = new sp_number_t[*lenret];
+    for (int i = 0; i < ret.size(); i++)
+        retvec[i] = ret.at(i);
 
-    return true;
+    return retvec;
 }
 
 SPEXPORT bool sp_modify_heliostats(sp_data_t p_data, sp_number_t* helio_data, int* nhel, int* ncols, const char* table_hdr)
@@ -1762,7 +1770,11 @@ SPEXPORT bool sp_modify_heliostats(sp_data_t p_data, sp_number_t* helio_data, in
     SimControl* SC = &mc->sim_control;
     
     if (SF->getHeliostats()->size() < 1)
+    {
+        std::string msg = "ERROR: sp_modify_heliostats requires a pre-existing field to be modified.";
+        SC->message_callback(msg.c_str(), SC->message_callback_data);
         return false;
+    }
 
     //validity check of provided headers
         //these are the supported options
@@ -1923,6 +1935,7 @@ SPEXPORT bool sp_modify_heliostats(sp_data_t p_data, sp_number_t* helio_data, in
                 updated_helios->at(j)->getEfficiencyObject()->reflectivity = vardata.at(j);
         }
     }
+    //TODO: Do we need to merge the updated_helios and old field object
 
     return true;
 }
