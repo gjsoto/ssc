@@ -24,6 +24,8 @@ extern "C" {
     /** The numeric type used in the SolarPILOT API. */ 
     typedef double sp_number_t;
 
+    SPEXPORT int sp_version();
+
     SPEXPORT void sp_set_callback(sp_data_t p_data, int (*)(sp_number_t, const char*));
 
     SPEXPORT void sp_cancel_simulation(sp_data_t p_data);
@@ -75,14 +77,14 @@ extern "C" {
 
     SPEXPORT sp_number_t* sp_get_layout_info(sp_data_t p_data, int* nhelio, int* ncol);
 
-    SPEXPORT bool sp_simulate(sp_data_t p_data, int nthreads, bool save_detail, bool update_aimpoints);
+    SPEXPORT bool sp_simulate(sp_data_t p_data, int nthreads, bool update_aimpoints); //bool save_detail,
 
     SPEXPORT const char* sp_summary_results(sp_data_t p_data);
 
     SPEXPORT sp_number_t* sp_detail_results(sp_data_t p_data, int* nrows, int* ncols, sp_number_t* selhel, int nselhel);
     //SPEXPORT sp_number_t* sp_detail_results(sp_data_t p_data, int* nrows, int* ncols, const char* header, sp_number_t* selhel, int nselhel);
 
-    SPEXPORT const char* sp_detail_results_header();
+    SPEXPORT const char* sp_detail_results_header(sp_data_t p_data);
 
     SPEXPORT sp_number_t* sp_get_fluxmap(sp_data_t p_data, int* nrows, int* ncols, int rec_id);
 

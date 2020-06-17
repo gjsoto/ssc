@@ -27,7 +27,7 @@ struct api_helper
 
     int (*external_callback)(sp_number_t fraction_complete, const char* notices);
 
-
+    std::string __str_data;  //used to pass string data back to API language     
     //bool (*soltrace_callback)(st_uint_t ntracedtotal, st_uint_t ntraced, st_uint_t ntotrace, st_uint_t curstage, st_uint_t nstages, void* data);
 
     api_helper()
@@ -44,6 +44,13 @@ struct api_helper
 
     };
 };
+
+SPEXPORT int sp_version()
+{
+       // TODO: I would like this to update with SolarPILOT
+       //_software_version is part of SPFRAME 
+    return 138;
+}
 
 SPEXPORT void sp_set_callback(sp_data_t p_data, int(*fcallback)(sp_number_t, const char*))
 {
@@ -334,8 +341,10 @@ SPEXPORT const char *sp_get_string(sp_data_t p_data, const char *name)
         SC->message_callback(msg.c_str(), SC->message_callback_data);
         return std::numeric_limits<const char*>::quiet_NaN();
     }
-    std::string ret = mc->variables._varptrs.at(name)->as_string();
-    return strdup(ret.c_str());
+    spvar<std::string>* ret = static_cast<spvar<std::string>*>(mc->variables._varptrs.at(name));
+    
+    //std::string ret = mc->variables._varptrs.at(name)->as_string();
+    return ret->val.c_str(); //strdup(ret.c_str());
 }
 
 /** Returns the value of a @a SSC_ARRAY variable with the given name. */
@@ -697,13 +706,55 @@ SPEXPORT bool sp_generate_layout(sp_data_t p_data, int nthreads = 0) //, bool sa
     if (nthreads!=0)
         SC->SetThreadCount(nthreads);    
 
-    Ambient* A = SF->getAmbientObject();
-    A->readWeatherFile(*V);
-
-    //TODO:Is this needed?  I dont think so. It updates Design page in UI
-    //F.UpdateDesignSelect(V->sf.des_sim_detail.mapval(), *V);
+    // Set heliostat template if only one exists - 
+    if ((int)SF->getHeliostatTemplates()->size() == 1) 
+    {
+        if ((int)V->sf.temp_which.combo_get_count() == 0)
+        {
+            // Add  
+            std::string js = my_to_string(0);
+            V->sf.temp_which.combo_add_choice(V->hels.at(0).helio_name.val, js);
+        }
+        V->sf.temp_which.combo_select_by_choice_index(0);
+    } // if single template is selected but there is more than one template available
+    else if ( ((int)V->sf.template_rule.combo_get_current_index() == var_solarfield::TEMPLATE_RULE::USE_SINGLE_TEMPLATE)
+                && (V->sf.temp_which.as_string() == "") )
+    {
+        std::string msg = "ERROR: Please set solarfield 'temp_which' value with the heliostat template name to use for field generation.";
+        SC->message_callback(msg.c_str(), SC->message_callback_data);
+        return false;
+    }
 
     //I think this function needs to be accessed by the API.  
+    std::string weatherfile_str = std::string(V->amb.weather_file.val);
+
+    Ambient::readWeatherFile(*V);
+
+    //Saving local verison of weather data
+    weatherfile wf;
+    if (!wf.open(weatherfile_str)) return 0; //error
+
+    //Update the weather data
+    std::string linef = "%d,%d,%d,%.2f,%.1f,%.1f,%.1f";
+    char cline[300];
+
+    int nrec = (int)wf.nrecords();
+
+    ArrayString local_wfdat;
+    local_wfdat.resize(nrec);
+
+    weather_record wrec;
+    for (int i = 0; i < nrec; i++)
+    {
+        //int year, month, day, hour;
+        wf.read(&wrec);
+        sprintf(cline, linef.c_str(), wrec.day, wrec.hour, wrec.month, wrec.dn, wrec.tdry, wrec.pres / 1000., wrec.wspd);
+        std::string line(cline);
+        local_wfdat.at(i) = line;
+    }
+
+    interop::GenerateSimulationWeatherData(*V, V->sf.des_sim_detail.mapval(), local_wfdat);
+
 
     SF->Clean();
     SF->Create(*V);
@@ -796,7 +847,7 @@ SPEXPORT sp_number_t* sp_get_layout_info(sp_data_t p_data, int* nhelio, int* nco
     return layoutinfo;
 }
 
-SPEXPORT bool sp_simulate(sp_data_t p_data, int nthreads = 1, bool save_detail = true, bool update_aimpoints = true)
+SPEXPORT bool sp_simulate(sp_data_t p_data, int nthreads = 1, bool update_aimpoints = true) //bool save_detail = true,
 //SPEXPORT void sp_simulate(sp_data_t p_data)
 {
     /*
@@ -858,8 +909,6 @@ SPEXPORT bool sp_simulate(sp_data_t p_data, int nthreads = 1, bool save_detail =
     duration = (std::clock() - start) / (double)CLOCKS_PER_SEC;
     std::string msg = "Simulation total time:" + std::to_string(duration) + " seconds";
     SC->message_callback(msg.c_str(), SC->message_callback_data);
-    // TODO: where does this need to be stored?
-        // Based on an inital look through, the time appears only on GUI. 
 
     SF->getSimInfoObject()->Reset();
 
@@ -956,9 +1005,11 @@ SPEXPORT const char *sp_summary_results(sp_data_t p_data)
         ret.append("Receiver name, " + (i == 0 ? "All receivers" : results->at(i).receiver_names.front() ) );
     }
 
-    return strdup(ret.c_str());
-}
+    mc->__str_data.clear();
+    mc->__str_data = ret;
 
+    return mc->__str_data.c_str();
+}
 
 SPEXPORT sp_number_t* sp_detail_results(sp_data_t p_data, int* nrows, int* ncols, sp_number_t* selhel = NULL, int nselhel = 0)
 {
@@ -1081,8 +1132,9 @@ SPEXPORT sp_number_t* sp_detail_results(sp_data_t p_data, int* nrows, int* ncols
     return nullptr;
 }
 
-SPEXPORT const char* sp_detail_results_header()
+SPEXPORT const char* sp_detail_results_header(sp_data_t p_data)
 {
+    api_helper* mc = static_cast<api_helper*>(p_data);
     std::string tab_header;
 
     // UPDATE: If table results change
@@ -1110,7 +1162,10 @@ SPEXPORT const char* sp_detail_results_header()
     tab_header.append("shading,");
     tab_header.append("clouds");
 
-    return strdup(tab_header.c_str());
+    mc->__str_data.clear();
+    mc->__str_data = tab_header;
+
+    return mc->__str_data.c_str();
 }
 
 SPEXPORT sp_number_t* sp_get_fluxmap(sp_data_t p_data, int* nrows, int* ncols, int rec_id = 0)
@@ -2066,7 +2121,9 @@ int ST_APICallback(st_uint_t ntracedtotal, st_uint_t ntraced, st_uint_t ntotrace
     }
     api->message_log.clear();
     
-    (*api->external_callback)((sp_number_t)((double)ntraced / (double)(std::max((int)ntracedtotal, 1))), messages.c_str());
+    (*api->external_callback)((sp_number_t)((double)ntraced / (double)(std::max((int)ntotrace, 1))), messages.c_str());
+    // Old call
+    //(*api->external_callback)((sp_number_t)((double)ntraced / (double)(std::max((int)ntracedtotal, 1))), messages.c_str());
     return 1;
 };
 
