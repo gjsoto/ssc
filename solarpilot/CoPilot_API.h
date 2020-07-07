@@ -24,7 +24,7 @@ extern "C" {
     /** The numeric type used in the SolarPILOT API. */ 
     typedef double sp_number_t;
 
-    SPEXPORT int sp_version();
+    SPEXPORT const char* sp_version(sp_data_t p_data);
 
     SPEXPORT void sp_set_callback(sp_data_t p_data, int (*)(sp_number_t, const char*));
 

@@ -45,11 +45,14 @@ struct api_helper
     };
 };
 
-SPEXPORT int sp_version()
+SPEXPORT const char* sp_version(sp_data_t p_data)
 {
-       // TODO: I would like this to update with SolarPILOT
-       //_software_version is part of SPFRAME 
-    return 138;
+    api_helper* mc = static_cast<api_helper*>(p_data);
+    var_map* V = &mc->variables;
+    
+       // TODO: Need to set up somewhere.  Maybe in solarfield.cpp line 319 within Create()?
+        // where and how?
+    return V->sf.version.val.c_str();
 }
 
 SPEXPORT void sp_set_callback(sp_data_t p_data, int(*fcallback)(sp_number_t, const char*))
@@ -343,7 +346,6 @@ SPEXPORT const char *sp_get_string(sp_data_t p_data, const char *name)
     }
     spvar<std::string>* ret = static_cast<spvar<std::string>*>(mc->variables._varptrs.at(name));
     
-    //std::string ret = mc->variables._varptrs.at(name)->as_string();
     return ret->val.c_str(); //strdup(ret.c_str());
 }
 
@@ -635,7 +637,6 @@ SPEXPORT int sp_update_geometry(sp_data_t p_data)
         local_wfdat.at(i) = line;
     }
 
-    //TODO: Update the design method box.. this actually updates both the map values and GUI. Probably should fix this sometime..
     //F.UpdateDesignSelect(V->sf.des_sim_detail.mapval(), *V);
         // Function seems to only update var_map with simulation data through GenearateSimulationWeatherData()
     interop::GenerateSimulationWeatherData(*V, V->sf.des_sim_detail.mapval(), local_wfdat);
@@ -1851,13 +1852,25 @@ SPEXPORT bool sp_modify_heliostats(sp_data_t p_data, sp_number_t* helio_data, in
     std::vector<std::string> vars;
     vars = split(hdr_str, ",");
 
+    if (std::find(vars.begin(), vars.end(), "id") == vars.end())
+    {
+        std::string msg = "ERROR: sp_modify_heliostats requires heliostat 'id' attribute.";
+        SC->message_callback(msg.c_str(), SC->message_callback_data);
+        return false;
+    }
+
     //processing user input data
     std::unordered_map<std::string, std::vector<double>> datamap;
     for (size_t i = 0; i < vars.size(); i++)
     {
         if (std::find(attrs.begin(), attrs.end(), vars.at(i)) == attrs.end())
         {
-            std::string msg = "Invalid attribute specified: " + vars.at(i);
+            std::string msg = "Invalid attribute specified: " + vars.at(i) + "\n";
+            msg += "Valid attributes names are as follows:\n";
+            for (size_t j = 0; j < attrs.size(); j++)
+            {
+                msg += attrs.at(j) + "\n";
+            }
             SC->message_callback(msg.c_str(), SC->message_callback_data);
             return false;
         }
@@ -1884,6 +1897,21 @@ SPEXPORT bool sp_modify_heliostats(sp_data_t p_data, sp_number_t* helio_data, in
         }
         catch (...)
         {
+            std::string msg = "Invalid id specified: " + std::to_string(datamap.at("id").at(i));
+            SC->message_callback(msg.c_str(), SC->message_callback_data);
+            return false;
+        }
+    }
+
+    //Push back the rest of the field
+    for (unordered_map<int, Heliostat*>::iterator col = hmap->begin(); col != hmap->end(); col++)
+    {
+        int id = col->first;
+        Heliostat* helio = col->second;
+        // if id not within datamap.at("id") then add helio to helios
+        if (std::find(datamap.at("id").begin(), datamap.at("id").end(), id) == datamap.at("id").end())
+        {
+            helios.push_back(helio);
         }
     }
 
@@ -1919,7 +1947,6 @@ SPEXPORT bool sp_modify_heliostats(sp_data_t p_data, sp_number_t* helio_data, in
         std::string varname = col->first;
         std::vector<double>& vardata = col->second;
 
-        // TODO: Should this be the layout or lobj?
         if (varname == "location-x")
         {
             for (size_t j = 0; j < vardata.size(); j++)
@@ -1956,9 +1983,9 @@ SPEXPORT bool sp_modify_heliostats(sp_data_t p_data, sp_number_t* helio_data, in
             for (size_t j = 0; j < vardata.size(); j++)
             {
                 if ((int)vardata.at(j) == 1)
-                    helios.at(j)->IsEnabled(true);
+                    layout->at(j).is_enabled = true;
                 else
-                    helios.at(j)->IsEnabled(false);
+                    layout->at(j).is_enabled = false;
             }
         }
     }
@@ -1990,7 +2017,6 @@ SPEXPORT bool sp_modify_heliostats(sp_data_t p_data, sp_number_t* helio_data, in
                 updated_helios->at(j)->getEfficiencyObject()->reflectivity = vardata.at(j);
         }
     }
-    //TODO: Do we need to merge the updated_helios and old field object
 
     return true;
 }
@@ -2134,7 +2160,6 @@ int MessageHandler(const char* message, void* data)
     //std::string mymessage(message);
     //api->message_log.push_back(mymessage);
 
-    //TODO: NEED to fix
     (*api->external_callback)((sp_number_t)0., message);
     return 1;
 }

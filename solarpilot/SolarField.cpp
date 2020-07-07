@@ -315,7 +315,8 @@ void SolarField::Create(var_map &V){
     _var_map = &V;  //point to te variables used to create this variable
     //_layout_data = V.sf.layout_data.val;  //copy string layout data
 
-
+	//Set Version Number
+	V.sf.version.val = "SolarPILOT Version: 1.3.8";
 
 	//Clean out possible existing variables
 	Clean();
