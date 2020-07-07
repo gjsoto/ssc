@@ -77,8 +77,8 @@ SPEXPORT void sp_data_free(sp_data_t p_data)
 {
     api_helper *mc = static_cast<api_helper*>(p_data);
 
-    if (p_data)
-        delete p_data;
+    if (mc)
+        delete mc;
 }
 
 SPEXPORT void var_free_memory(sp_number_t* varptr)
