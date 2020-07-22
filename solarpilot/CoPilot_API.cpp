@@ -26,6 +26,7 @@ struct api_helper
     std::vector<std::string> message_log;
 
     int (*external_callback)(sp_number_t fraction_complete, const char* notices);
+    bool use_api_callback;
 
     std::string __str_data;  //used to pass string data back to API language     
     //bool (*soltrace_callback)(st_uint_t ntracedtotal, st_uint_t ntraced, st_uint_t ntotrace, st_uint_t curstage, st_uint_t nstages, void* data);
@@ -41,6 +42,8 @@ struct api_helper
         sim_control.soltrace_callback_data = (void*)this;
         sim_control.message_callback = MessageHandler;
         sim_control.message_callback_data = (void*)this;
+
+        use_api_callback = false;
 
     };
 };
@@ -59,8 +62,14 @@ SPEXPORT void sp_set_callback(sp_data_t p_data, int(*fcallback)(sp_number_t, con
 {
     api_helper* mc = static_cast<api_helper*>(p_data);
     mc->external_callback = fcallback;
+    mc->use_api_callback = true;
 }
 
+SPEXPORT void sp_disable_callback(sp_data_t p_data)
+{
+    api_helper* mc = static_cast<api_helper*>(p_data);
+    mc->use_api_callback = false;
+}
 
 SPEXPORT void sp_cancel_simulation(sp_data_t p_data)
 {
@@ -2140,16 +2149,19 @@ int ST_APICallback(st_uint_t ntracedtotal, st_uint_t ntraced, st_uint_t ntotrace
     */
     api_helper* api= static_cast<api_helper*>(data);
 
-    std::string messages = "";
-    if (api->message_log.size() != 0)
+    if (api->use_api_callback)
     {
-        messages = join(api->message_log, "\n");
+        std::string messages = "";
+        if (api->message_log.size() != 0)
+        {
+            messages = join(api->message_log, "\n");
+        }
+        api->message_log.clear();
+
+        (*api->external_callback)((sp_number_t)((double)ntraced / (double)(std::max((int)ntotrace, 1))), messages.c_str());
+        // Old call
+        //(*api->external_callback)((sp_number_t)((double)ntraced / (double)(std::max((int)ntracedtotal, 1))), messages.c_str());
     }
-    api->message_log.clear();
-    
-    (*api->external_callback)((sp_number_t)((double)ntraced / (double)(std::max((int)ntotrace, 1))), messages.c_str());
-    // Old call
-    //(*api->external_callback)((sp_number_t)((double)ntraced / (double)(std::max((int)ntracedtotal, 1))), messages.c_str());
     return 1;
 };
 
@@ -2159,8 +2171,10 @@ int MessageHandler(const char* message, void* data)
 
     //std::string mymessage(message);
     //api->message_log.push_back(mymessage);
-
-    (*api->external_callback)((sp_number_t)0., message);
+    if (api->use_api_callback)
+    {
+        (*api->external_callback)((sp_number_t)0., message);
+    }
     return 1;
 }
 

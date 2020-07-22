@@ -28,6 +28,8 @@ extern "C" {
 
     SPEXPORT void sp_set_callback(sp_data_t p_data, int (*)(sp_number_t, const char*));
 
+    SPEXPORT void sp_disable_callback(sp_data_t p_data);
+
     SPEXPORT void sp_cancel_simulation(sp_data_t p_data);
 
     /** Creates a new data object in memory.  A data object stores a table of named values, where each value can be of any SolarPILOT datatype. */
