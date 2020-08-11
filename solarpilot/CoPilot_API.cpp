@@ -1902,7 +1902,7 @@ SPEXPORT bool sp_modify_heliostats(sp_data_t p_data, sp_number_t* helio_data, in
     {
         try
         {
-            helios.push_back(hmap->at(datamap.at("id").at(i)));
+            helios.push_back(hmap->at((int)datamap.at("id").at(i)));
         }
         catch (...)
         {
@@ -1974,17 +1974,26 @@ SPEXPORT bool sp_modify_heliostats(sp_data_t p_data, sp_number_t* helio_data, in
         else if (varname == "aimpoint-x")
         {
             for (size_t j = 0; j < vardata.size(); j++)
+            {
                 layout->at(j).aim.x = vardata.at(j);
+                layout->at(j).is_user_aim = true;
+            }
         }
         else if (varname == "aimpoint-y")
         {
             for (size_t j = 0; j < vardata.size(); j++)
+            {
                 layout->at(j).aim.y = vardata.at(j);
+                layout->at(j).is_user_aim = true;
+            }
         }
         else if (varname == "aimpoint-z")
         {
             for (size_t j = 0; j < vardata.size(); j++)
+            {
                 layout->at(j).aim.z = vardata.at(j);
+                layout->at(j).is_user_aim = true;
+            }
         }
         
         else if (varname == "enabled")
