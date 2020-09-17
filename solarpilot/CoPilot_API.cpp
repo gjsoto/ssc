@@ -110,7 +110,7 @@ SPEXPORT void sp_set_number(sp_data_t p_data, const char* name, sp_number_t v)
 
     //make sure the data type of the variable provided matches the internal data type
     int dattype = mc->variables._varptrs.at(name)->dattype;
-    if (!(dattype == SP_DATTYPE::SP_DOUBLE || dattype == SP_DATTYPE::SP_INT))
+    if (!(dattype == SP_DATTYPE::SP_DOUBLE || dattype == SP_DATTYPE::SP_INT || dattype == SP_DATTYPE::SP_BOOL))
     {
         std::string msg = ("Data type of " + std::string(name) + " is not compatible with sp_get_number. \n "
                                 + __FILE__ + " -> line:" + my_to_string(__LINE__) );
@@ -142,8 +142,14 @@ SPEXPORT void sp_set_number(sp_data_t p_data, const char* name, sp_number_t v)
     }
     else
     {
-        //no problems, just set the variable
-        std::string svalue = my_to_string(v);
+        std::string svalue = "";
+        if (dattype == SP_DATTYPE::SP_BOOL) {
+            svalue = (v ? "TRUE" : "FALSE");
+        }
+        else {
+            //no problems, just set the variable
+            svalue = my_to_string(v);
+        }
         mc->variables._varptrs.at(sname)->set_from_string(svalue.c_str());
         return;
     }
@@ -299,7 +305,7 @@ SPEXPORT sp_number_t sp_get_number(sp_data_t p_data, const char* name)
 
     //make sure the data type of the variable provided matches the internal data type
     int dattype = mc->variables._varptrs.at(name)->dattype;
-    if (!(dattype == SP_DATTYPE::SP_DOUBLE || dattype == SP_DATTYPE::SP_INT))
+    if (!(dattype == SP_DATTYPE::SP_DOUBLE || dattype == SP_DATTYPE::SP_INT || dattype == SP_DATTYPE::SP_BOOL))
     {
         std::string msg = "Data type of " + std::string(name) + " is not compatible with sp_get_number. \n" + __FILE__ + " -> line:" + my_to_string(__LINE__);
         SC->message_callback(msg.c_str(), SC->message_callback_data);
