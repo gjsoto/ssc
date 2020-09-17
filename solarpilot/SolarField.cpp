@@ -1442,11 +1442,13 @@ bool SolarField::PrepareFieldLayout(SolarField &SF, WeatherData *wdata, bool ref
         to_double(vdata.at(7), &P.Simweight);
         P.is_layout = true;
         
-        DTobj dt;
+        DateTime dt;
         dt.setZero();
+		dt._year = 2010.; //added to remove error being printed to screen
         dt._mday = dom;
         dt._hour = hour;
         dt._month = month;
+		dt._yday = dt.GetDayOfYear();
 
         //Calculate the sun position vector
         double az, zen;
