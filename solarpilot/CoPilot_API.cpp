@@ -444,8 +444,8 @@ SPEXPORT sp_number_t *sp_get_matrix(sp_data_t p_data, const char *name, int *nro
     //allocate space at the value_array pointer
     sp_number_t* values = new sp_number_t[(int)(Md.nrows()*Md.ncols())];
     //set lengths for return
-    *ncols = Md.ncols();
-    *nrows = Md.nrows();
+    *ncols = (int) Md.ncols();
+    *nrows = (int) Md.nrows();
 
     //convert to to return format
     for (size_t i = 0; i < *nrows; i++)
@@ -494,7 +494,7 @@ SPEXPORT int sp_add_receiver(sp_data_t p_data, const char* receiver_name)
     }
 
     //Add a receiver
-    int ind = V->recs.size();
+    int ind = (int) V->recs.size();
 
     V->add_receiver(ind);
     V->recs[ind].rec_name.val = tname;
@@ -529,13 +529,13 @@ SPEXPORT int sp_drop_receiver(sp_data_t p_data, const char* receiver_name)
             //delete the item
             V->drop_receiver(V->recs.at(i).id.val);
             mc->solarfield.Create(*V);
-            return 1.;
+            return 1;
         }
     }
 
     std::string msg = "Receiver name '" + tname + "' was not found.";
     SC->message_callback(msg.c_str(), SC->message_callback_data);
-    return 0.;
+    return 0;
 }
 
 SPEXPORT int sp_add_heliostat_template(sp_data_t p_data, const char* heliostat_name)
@@ -565,7 +565,7 @@ SPEXPORT int sp_add_heliostat_template(sp_data_t p_data, const char* heliostat_n
         return 0;
     }
 
-    int ind = V->hels.size();
+    int ind = (int) V->hels.size();
     V->add_heliostat(ind);
     V->hels.back().helio_name.val = tname;
     //Re-create the solar field object
@@ -817,11 +817,11 @@ SPEXPORT bool sp_assign_layout(sp_data_t p_data, sp_number_t* pvalues, int nrows
     return simok;
 }
 
-SPEXPORT sp_number_t* sp_get_layout_info(sp_data_t p_data, int* nhelio, int* ncol)
+SPEXPORT sp_number_t* sp_get_layout_info(sp_data_t p_data, int* nhelio, int* ncol, bool get_corners = false)
 {
     /*
     Get information regarding the heliostat field layout. Returns matrix with each row corresponding to a heliostat.
-        "Information includes: [index, position-x, position-y, position-z, template_id, ranking metric value]
+        "Information includes: [index, position-x, position-y, position-z, template_id, ranking metric value]...[corner positions x,y,z]
     Returns: (void):table
     */
     api_helper* mc = static_cast<api_helper*>(p_data);
@@ -833,8 +833,10 @@ SPEXPORT sp_number_t* sp_get_layout_info(sp_data_t p_data, int* nhelio, int* nco
 
     htemp_map htemps = *SF->getHeliostatTemplates();
 
-    *nhelio = hels->size();
+    *nhelio = (int) hels->size();
     *ncol = 6;
+    if (get_corners)
+        *ncol += (int) hels->at(0)->getCornerCoords()->size() * 3;  // assumes all heliostats have a equal number of corners 
 
     sp_number_t* layoutinfo = new sp_number_t[(*nhelio) * (*ncol)];
 
@@ -850,6 +852,18 @@ SPEXPORT sp_number_t* sp_get_layout_info(sp_data_t p_data, int* nhelio, int* nco
         c++;  layoutinfo[i * (*ncol) + c] = loc->z;
         c++;  layoutinfo[i * (*ncol) + c] = hel->getMasterTemplate()->getVarMap()->id.val;
         c++;  layoutinfo[i * (*ncol) + c] = hel->getRankingMetricValue();
+        if (get_corners)
+        {
+            std::vector<sp_point>* corners = hel->getCornerCoords();
+            for (size_t j = 0; j < (int)corners->size(); j++)
+            {
+                sp_point corner = corners->at(j);
+                c++; layoutinfo[i * (*ncol) + c] = corner.x;
+                c++; layoutinfo[i * (*ncol) + c] = corner.y;
+                c++; layoutinfo[i * (*ncol) + c] = corner.z;
+            }
+
+        }
 
         if ((i == 0) && (c != *ncol - 1))
         {
@@ -861,6 +875,38 @@ SPEXPORT sp_number_t* sp_get_layout_info(sp_data_t p_data, int* nhelio, int* nco
     }
 
     return layoutinfo;
+}
+
+SPEXPORT const char* sp_get_layout_header(sp_data_t p_data, bool get_corners = false)
+{
+    api_helper* mc = static_cast<api_helper*>(p_data);
+    std::string tab_header;
+
+    tab_header.append("id,");
+    tab_header.append("x_location,");
+    tab_header.append("y_location,");
+    tab_header.append("z_location,");
+    tab_header.append("helio_template_id,");
+    tab_header.append("layout_metric");
+
+    if (get_corners)
+    {
+        SolarField* SF = &mc->solarfield;
+        Heliostat* hel = SF->getHeliostats()->at(0);
+        std::vector<std::string > coords{ "x", "y", "z" };
+        for (size_t j = 0; j < (int)hel->getCornerCoords()->size(); j++)
+        {
+            for (size_t i = 0; i < coords.size(); i++)
+            {
+                tab_header.append(",corner" + std::to_string(j) + "_" + coords.at(i));
+            }
+        }
+    }
+
+    mc->__str_data.clear();
+    mc->__str_data = tab_header;
+
+    return mc->__str_data.c_str();
 }
 
 SPEXPORT bool sp_simulate(sp_data_t p_data, int nthreads = 1, bool update_aimpoints = true) //bool save_detail = true,
@@ -1027,7 +1073,7 @@ SPEXPORT const char *sp_summary_results(sp_data_t p_data)
     return mc->__str_data.c_str();
 }
 
-SPEXPORT sp_number_t* sp_detail_results(sp_data_t p_data, int* nrows, int* ncols, sp_number_t* selhel = NULL, int nselhel = 0)
+SPEXPORT sp_number_t* sp_detail_results(sp_data_t p_data, int* nrows, int* ncols, sp_number_t* selhel = NULL, int nselhel = 0, bool get_corners = false)
 {
     /*
     returns a vector with hash entries for each heliostat
@@ -1086,8 +1132,12 @@ SPEXPORT sp_number_t* sp_detail_results(sp_data_t p_data, int* nrows, int* ncols
             helio_select.assign(SF->getHeliostats()->begin(), SF->getHeliostats()->end());
         }
 
-        *nrows = helio_select.size();
+        *nrows = (int)helio_select.size();
         *ncols = 23;  //number of results in table
+        if (get_corners)
+            *ncols += (int)helio_select.at(0)->getCornerCoords()->size() * 3;  // assumes all heliostats have a equal number of corners
+        if (SF->getReceivers()->size() > 1)
+            *ncols += 1;
 
         //loop through selected heliostats, gathering information
         sp_number_t* ret = new sp_number_t[(*nrows) * (*ncols)];
@@ -1112,7 +1162,33 @@ SPEXPORT sp_number_t* sp_detail_results(sp_data_t p_data, int* nrows, int* ncols
             c++; ret[i * (*ncols) + c] = H->getTrackVector()->i;
             c++; ret[i * (*ncols) + c] = H->getTrackVector()->j;
             c++; ret[i * (*ncols) + c] = H->getTrackVector()->k;
-            
+
+            if (get_corners) // adding heliostat corner coordinates
+            {
+                std::vector<sp_point>* corners = H->getCornerCoords();
+                for (size_t j = 0; j < (int)corners->size(); j++)
+                {
+                    sp_point corner = corners->at(j);
+                    c++; ret[i * (*ncols) + c] = corner.x;
+                    c++; ret[i * (*ncols) + c] = corner.y;
+                    c++; ret[i * (*ncols) + c] = corner.z;
+                }
+
+            }
+            // finding receiver the heliostat is pointed at (for multi-receiver fields)
+            if (SF->getReceivers()->size() > 1)
+            {
+                int r = 0;
+                for (r = 0; r < (int)SF->getReceivers()->size(); r++)
+                {
+                    if (H->getWhichReceiver() == SF->getReceivers()->at(r))
+                    {
+                        break;
+                    }
+                }
+                c++; ret[i * (*ncols) + c] = r;
+            }
+
             c++; ret[i * (*ncols) + c] = H->getRankingMetricValue();
             c++; ret[i * (*ncols) + c] = H->getPowerToReceiver() / 1000.;  //kW
             c++; ret[i * (*ncols) + c] = H->getArea()
@@ -1144,44 +1220,74 @@ SPEXPORT sp_number_t* sp_detail_results(sp_data_t p_data, int* nrows, int* ncols
 
         return ret;
     }
+    else
+    {
+        SC->message_callback("Solarfield object empty... be sure to successfully generate and simulate field before calling sp_detailed_results.", SC->message_callback_data);
+        return nullptr;
+    }
 
     return nullptr;
 }
 
-SPEXPORT const char* sp_detail_results_header(sp_data_t p_data)
+SPEXPORT const char* sp_detail_results_header(sp_data_t p_data, bool get_corners = false)
 {
     api_helper* mc = static_cast<api_helper*>(p_data);
-    std::string tab_header;
+    SolarField* SF = &mc->solarfield;
 
-    // UPDATE: If table results change
-    tab_header.append("id,");
-    tab_header.append("x_location,");
-    tab_header.append("y_location,");
-    tab_header.append("z_location,");
-    tab_header.append("x_aimpoint,");
-    tab_header.append("y_aimpoint,");
-    tab_header.append("z_aimpoint,");
-    tab_header.append("i_tracking_vector,");
-    tab_header.append("j_tracking_vector,");
-    tab_header.append("k_tracking_vector,");
-    tab_header.append("layout_metric,");
-    tab_header.append("power_to_receiver,");
-    tab_header.append("power_reflected,");
-    tab_header.append("energy,");
-    tab_header.append("efficiency_annual,");
-    tab_header.append("efficiency,");
-    tab_header.append("cosine,");
-    tab_header.append("intercept,");
-    tab_header.append("reflectance,");
-    tab_header.append("attenuation,");
-    tab_header.append("blocking,");
-    tab_header.append("shading,");
-    tab_header.append("clouds");
+    if (SF->getHeliostats()->size() > 0)
+    {
 
-    mc->__str_data.clear();
-    mc->__str_data = tab_header;
+        std::string tab_header;
 
-    return mc->__str_data.c_str();
+        // UPDATE: If table results change
+        tab_header.append("id,");
+        tab_header.append("x_location,");
+        tab_header.append("y_location,");
+        tab_header.append("z_location,");
+        tab_header.append("x_aimpoint,");
+        tab_header.append("y_aimpoint,");
+        tab_header.append("z_aimpoint,");
+        tab_header.append("i_tracking_vector,");
+        tab_header.append("j_tracking_vector,");
+        tab_header.append("k_tracking_vector,");
+
+        if (get_corners)
+        {
+            Heliostat* hel = SF->getHeliostats()->at(0);
+            std::vector<std::string > coords{ "x", "y", "z" };
+            for (size_t j = 0; j < (int)hel->getCornerCoords()->size(); j++)
+            {
+                for (size_t i = 0; i < coords.size(); i++)
+                {
+                    tab_header.append("corner" + std::to_string(j) + "_" + coords.at(i) + ",");
+                }
+            }
+        }
+
+        if (SF->getReceivers()->size() > 1)
+            tab_header.append("receiver_map,");
+
+        tab_header.append("layout_metric,");
+        tab_header.append("power_to_receiver,");
+        tab_header.append("power_reflected,");
+        tab_header.append("energy,");
+        tab_header.append("efficiency_annual,");
+        tab_header.append("efficiency,");
+        tab_header.append("cosine,");
+        tab_header.append("intercept,");
+        tab_header.append("reflectance,");
+        tab_header.append("attenuation,");
+        tab_header.append("blocking,");
+        tab_header.append("shading,");
+        tab_header.append("clouds");
+
+        mc->__str_data.clear();
+        mc->__str_data = tab_header;
+
+        return mc->__str_data.c_str();
+    }
+
+    return nullptr;
 }
 
 SPEXPORT sp_number_t* sp_get_fluxmap(sp_data_t p_data, int* nrows, int* ncols, int rec_id = 0)
@@ -1210,8 +1316,8 @@ SPEXPORT sp_number_t* sp_get_fluxmap(sp_data_t p_data, int* nrows, int* ncols, i
 
     FluxGrid *fg = rec->getFluxSurfaces()->front().getFluxMap();
 
-    *nrows = fg->front().size();
-    *ncols = fg->size();
+    *nrows = (int)fg->front().size();
+    *ncols = (int)fg->size();
     sp_number_t* fluxmap = new sp_number_t[(*nrows) * (*ncols)];
 
     //rows
@@ -1815,7 +1921,7 @@ SPEXPORT sp_number_t* sp_heliostats_by_region(sp_data_t p_data, const char* coor
         return nullptr;
     }
     // pass back size of return vector and vector values
-    *lenret = ret.size();
+    *lenret = (int)ret.size();
     sp_number_t* retvec = new sp_number_t[*lenret];
     for (int i = 0; i < ret.size(); i++)
         retvec[i] = ret.at(i);

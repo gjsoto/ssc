@@ -77,16 +77,19 @@ extern "C" {
 
     SPEXPORT bool sp_assign_layout(sp_data_t p_data, sp_number_t* pvalues, int nrows, int ncols, int nthreads);
 
-    SPEXPORT sp_number_t* sp_get_layout_info(sp_data_t p_data, int* nhelio, int* ncol);
+    //SPEXPORT sp_number_t* sp_get_layout_info(sp_data_t p_data, int* nhelio, int* ncol);
+    SPEXPORT sp_number_t* sp_get_layout_info(sp_data_t p_data, int* nhelio, int* ncol, bool get_corners);
+
+    SPEXPORT const char* sp_get_layout_header(sp_data_t p_data, bool get_corners);
 
     SPEXPORT bool sp_simulate(sp_data_t p_data, int nthreads, bool update_aimpoints); //bool save_detail,
 
     SPEXPORT const char* sp_summary_results(sp_data_t p_data);
 
-    SPEXPORT sp_number_t* sp_detail_results(sp_data_t p_data, int* nrows, int* ncols, sp_number_t* selhel, int nselhel);
+    SPEXPORT sp_number_t* sp_detail_results(sp_data_t p_data, int* nrows, int* ncols, sp_number_t* selhel, int nselhel, bool get_corners);
     //SPEXPORT sp_number_t* sp_detail_results(sp_data_t p_data, int* nrows, int* ncols, const char* header, sp_number_t* selhel, int nselhel);
 
-    SPEXPORT const char* sp_detail_results_header(sp_data_t p_data);
+    SPEXPORT const char* sp_detail_results_header(sp_data_t p_data, bool get_corners);
 
     SPEXPORT sp_number_t* sp_get_fluxmap(sp_data_t p_data, int* nrows, int* ncols, int rec_id);
 
