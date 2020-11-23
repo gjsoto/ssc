@@ -95,7 +95,7 @@ SPEXPORT void var_free_memory(sp_number_t* varptr)
     delete[] varptr;
 };
 
-SPEXPORT void sp_set_number(sp_data_t p_data, const char* name, sp_number_t v)
+SPEXPORT bool sp_set_number(sp_data_t p_data, const char* name, sp_number_t v)
 {
     api_helper *mc = static_cast<api_helper*>(p_data);
     SimControl* SC = &mc->sim_control;
@@ -105,43 +105,41 @@ SPEXPORT void sp_set_number(sp_data_t p_data, const char* name, sp_number_t v)
     {
         std::string msg = "No such variable: " + std::string(name) + "\nWARNING: Value was not set!";
         SC->message_callback(msg.c_str(), SC->message_callback_data);
-        return;
-    }
-
-    //make sure the data type of the variable provided matches the internal data type
-    int dattype = mc->variables._varptrs.at(name)->dattype;
-    if (!(dattype == SP_DATTYPE::SP_DOUBLE || dattype == SP_DATTYPE::SP_INT || dattype == SP_DATTYPE::SP_BOOL))
-    {
-        std::string msg = ("Data type of " + std::string(name) + " is not compatible with sp_get_number. \n "
-                                + __FILE__ + " -> line:" + my_to_string(__LINE__) );
-        SC->message_callback(msg.c_str(), SC->message_callback_data);
-        return;
+        return false;
     }
 
     //create a string copy of the variable name
     std::string sname = (std::string)name;
+    bool is_combo = (mc->variables._varptrs.at(sname)->ctype == "combo");   //is variable a combo?
 
-    // TODO: This doesn't work for int combos
-    //if it's a combo, make sure the specified combo choice exists
-    if (mc->variables._varptrs.at(sname)->ctype == "combo")
+    //make sure the data type of the variable provided matches the internal data type
+    int dattype = mc->variables._varptrs.at(name)->dattype;
+    if (!(dattype == SP_DATTYPE::SP_DOUBLE || dattype == SP_DATTYPE::SP_INT || dattype == SP_DATTYPE::SP_BOOL || (dattype == SP_DATTYPE::SP_STRING && is_combo)))
     {
-        std::string svalue = my_to_string(v);
+        std::string msg = "Data type of " + std::string(name) + " is not compatible with sp_set_number. \nWARNING: Value was not set!";
+        SC->message_callback(msg.c_str(), SC->message_callback_data);
+        return false;
+    }
 
-        std::vector< std::string > cbchoices = mc->variables._varptrs.at(sname)->combo_get_choices();
-        if (std::find(cbchoices.begin(), cbchoices.end(), sname) != cbchoices.end())
+    //if it's a combo, set value based on map value
+    if (is_combo)
+    {
+        int cbchoice = (int) v;
+        if (mc->variables._varptrs.at(sname)->combo_select_by_mapval(cbchoice))
         {
-            //valid variable and selection
-            mc->variables._varptrs.at(sname)->set_from_string(svalue.c_str());
+            // successfully set 
+            return true;
         }
         else
         {
-            std::string msg = "Invalid variable choice for \"" + sname + "\": \"" + my_to_string(v) + "\" is not a valid option.";
+            std::string msg = "Invalid variable choice for \"" + sname + "\": \"" + my_to_string(v) + "\" is not a valid option. \nWARNING: Value was not set!";
             SC->message_callback(msg.c_str(), SC->message_callback_data);
-            return;
+            return false;
         }
     }
     else
     {
+        // set Boolean values
         std::string svalue = "";
         if (dattype == SP_DATTYPE::SP_BOOL) {
             svalue = (v ? "TRUE" : "FALSE");
@@ -151,58 +149,62 @@ SPEXPORT void sp_set_number(sp_data_t p_data, const char* name, sp_number_t v)
             svalue = my_to_string(v);
         }
         mc->variables._varptrs.at(sname)->set_from_string(svalue.c_str());
-        return;
+        return true;
     }
 }
 
-SPEXPORT void sp_set_string(sp_data_t p_data, const char *name, const char *value)
+SPEXPORT bool sp_set_string(sp_data_t p_data, const char *name, const char *value)
 {
     api_helper *mc = static_cast<api_helper*>(p_data);
     SimControl* SC = &mc->sim_control;
 
+    //create a string copy of the variable name
     std::string sname = (std::string)name;
     if (mc->variables._varptrs.find(name) == mc->variables._varptrs.end())
     {
         std::string msg = "No such variable: " + std::string(name) + "\nWARNING: Value was not set!";
         SC->message_callback(msg.c_str(), SC->message_callback_data);
-        return;
+        return false;
+    }
+
+    //make sure the data type of the variable provided matches the internal data type
+    int dattype = mc->variables._varptrs.at(name)->dattype;
+    if (!(dattype == SP_DATTYPE::SP_STRING))
+    {
+        std::string msg = "Data type of " + std::string(name) + " is not compatible with sp_set_string. \nWARNING: Value was not set!";
+        SC->message_callback(msg.c_str(), SC->message_callback_data);
+        return false;
+    }
+
+    //if it's a combo, make sure the specified combo choice exists
+    if (mc->variables._varptrs.at(sname)->ctype == "combo")
+    {
+        std::string svalue = my_to_string(value);
+
+        std::vector< std::string > cbchoices = mc->variables._varptrs.at(sname)->combo_get_choices();
+        if (std::find(cbchoices.begin(), cbchoices.end(), svalue) != cbchoices.end())
+        {
+            //valid variable and selection
+            mc->variables._varptrs.at(sname)->set_from_string(svalue.c_str());
+            return true;
+        }
+        else
+        {
+            std::string msg = "Invalid variable choice for \"" + sname + "\": \"" + my_to_string(value) + "\" is not a valid option. \nWARNING: Value was not set!";
+            SC->message_callback(msg.c_str(), SC->message_callback_data);
+            return false;
+        }
     }
     else
     {
+        // no problems, just set the variable
         mc->variables._varptrs.at(sname)->set_from_string(value);
+        return true;
     }
-    
-
-    ////if it's a combo, make sure the specified combo choice exists
-    //if (mc->variables._varptrs.at(sname)->ctype == "combo")
-    //{
-    //    std::string svalue = my_to_string(value);
-
-    //    std::vector< std::string > cbchoices = mc->variables._varptrs.at(sname)->combo_get_choices();
-    //    if (std::find(cbchoices.begin(), cbchoices.end(), svalue) != cbchoices.end())
-    //    {
-    //        //valid variable and selection
-    //        mc->variables._varptrs.at(sname)->set_from_string(svalue.c_str());
-    //    }
-    //    else
-    //    {
-    //        std::string msg = "Invalid variable choice for \"" + sname + "\": \"" + my_to_string(value) + "\" is not a valid option.";
-    //        SC->message_callback(msg.c_str(), SC->message_callback_data);
-    //        return;
-    //    }
-    //}
-    //else
-    //{
-    //    //no problems, just set the variable
-    //    std::string svalue = my_to_string(value);
-    //    mc->variables._varptrs.at(sname)->set_from_string(svalue.c_str());
-    //    return;
-    //}
-
 }
 
-/** Assigns value of type SP_VEC_DOUBLE */
-SPEXPORT void sp_set_array(sp_data_t p_data, const char *name, sp_number_t *pvalues, int length)
+/** Assigns value of type SP_VEC_DOUBLE and SP_VEC_INTEGER */
+SPEXPORT bool sp_set_array(sp_data_t p_data, const char *name, sp_number_t *pvalues, int length)
 {
     api_helper *mc = static_cast<api_helper*>(p_data);
     SimControl* SC = &mc->sim_control;
@@ -212,41 +214,44 @@ SPEXPORT void sp_set_array(sp_data_t p_data, const char *name, sp_number_t *pval
     {
         std::string msg = "No such variable: " + std::string(name) + "\nWARNING: Value was not set!";
         SC->message_callback(msg.c_str(), SC->message_callback_data);
-        return;
+        return false;
     }
 
-
     //make sure the data type of the variable provided matches the internal data type
-    if (mc->variables._varptrs.at(name)->dattype != SP_DATTYPE::SP_VEC_DOUBLE)
+    int dattype = mc->variables._varptrs.at(name)->dattype;
+    if (!(dattype == SP_DATTYPE::SP_VEC_DOUBLE || dattype == SP_DATTYPE::SP_VEC_INTEGER))
     {
-        std::string msg = "Data type of " + std::string(name) + " is not compatible with sp_set_array. \n" + __FILE__ + ":" + my_to_string(__LINE__);
+        std::string msg = "Data type of " + std::string(name) + " is not compatible with sp_set_array.  \nWARNING: Value was not set!";
         SC->message_callback(msg.c_str(), SC->message_callback_data);
-        return;
+        return false;
     }
 
     //create a string copy of the variable name
-    std::string sname = (std::string)name;
+    std::string sname = (std::string) name;
 
     //collect the array data into a string with correct format
-
     std::stringstream array_string;
     
     for (size_t i = 0; i < length; i++)
-        array_string << pvalues[i] << ",";
-    
+    {
+        if (dattype == SP_DATTYPE::SP_VEC_INTEGER)
+            array_string << (int)pvalues[i] << ",";
+        else
+            array_string << pvalues[i] << ",";
+    }
+
     //assign the array
     mc->variables._varptrs.at(name)->set_from_string(array_string.str().c_str());
-
+    return true;
 }
 
 /** Assigns value of type @a SSC_MATRIX . Matrices are specified as a continuous array, in row-major order.  Example: the matrix [[5,2,3],[9,1,4]] is stored as [5,2,3,9,1,4]. */
-SPEXPORT void sp_set_matrix(sp_data_t p_data, const char *name, sp_number_t *pvalues, int nrows, int ncols)
+SPEXPORT bool sp_set_matrix(sp_data_t p_data, const char *name, sp_number_t *pvalues, int nrows, int ncols)
 {
     /*
     rows separated by ';'
     cols separated by ','
     */
-
     api_helper *mc = static_cast<api_helper*>(p_data);
     SimControl* SC = &mc->sim_control;
 
@@ -255,24 +260,22 @@ SPEXPORT void sp_set_matrix(sp_data_t p_data, const char *name, sp_number_t *pva
     {
         std::string msg = "No such variable: " + std::string(name) + "\nWARNING: Value was not set!";
         SC->message_callback(msg.c_str(), SC->message_callback_data);
-        return;
+        return false;
     }
 
     //make sure the data type of the variable provided matches the internal data type
     if (mc->variables._varptrs.at(name)->dattype != SP_DATTYPE::SP_MATRIX_T)
     {
-        std::string msg = "Data type of " + std::string(name) + " is not compatible with sp_set_matrix. \n" + __FILE__ + ":" + my_to_string(__LINE__);
+        std::string msg = "Data type of " + std::string(name) + " is not compatible with sp_set_matrix. \nWARNING: Value was not set!";
         SC->message_callback(msg.c_str(), SC->message_callback_data);
-        return;
+        return false;
     }
 
     //create a string copy of the variable name
     std::string sname = (std::string)name;
 
     //collect the array data into a string with correct format
-
     std::stringstream matrix_string;
-
     for (size_t i = 0; i < nrows; i++)
     {
         for (size_t j = 0; j < ncols; j++)
@@ -284,7 +287,7 @@ SPEXPORT void sp_set_matrix(sp_data_t p_data, const char *name, sp_number_t *pva
         
     //assign the matrix
     mc->variables._varptrs.at(name)->set_from_string(matrix_string.str().c_str());
-
+    return true;
 }
 
 SPEXPORT sp_number_t sp_get_number(sp_data_t p_data, const char* name)
@@ -292,7 +295,6 @@ SPEXPORT sp_number_t sp_get_number(sp_data_t p_data, const char* name)
     /*
     Return value of type double, int, or bool. Bools are returned as 0 or 1.
     */
-
     api_helper *mc = static_cast<api_helper*>(p_data);
     SimControl* SC = &mc->sim_control;
 
@@ -303,17 +305,19 @@ SPEXPORT sp_number_t sp_get_number(sp_data_t p_data, const char* name)
         return std::numeric_limits<sp_number_t>::quiet_NaN();
     }
 
+    //create a string copy of the variable name
+    std::string sname = (std::string)name;
+    bool is_combo = (mc->variables._varptrs.at(sname)->ctype == "combo");   //is variable a combo?
+
     //make sure the data type of the variable provided matches the internal data type
     int dattype = mc->variables._varptrs.at(name)->dattype;
-    if (!(dattype == SP_DATTYPE::SP_DOUBLE || dattype == SP_DATTYPE::SP_INT || dattype == SP_DATTYPE::SP_BOOL))
+    if (!(dattype == SP_DATTYPE::SP_DOUBLE || dattype == SP_DATTYPE::SP_INT || dattype == SP_DATTYPE::SP_BOOL || (dattype == SP_DATTYPE::SP_STRING && is_combo)))
     {
-        std::string msg = "Data type of " + std::string(name) + " is not compatible with sp_get_number. \n" + __FILE__ + " -> line:" + my_to_string(__LINE__);
+        std::string msg = "Data type of " + std::string(name) + " is not compatible with sp_get_number.";
         SC->message_callback(msg.c_str(), SC->message_callback_data);
         return std::numeric_limits<sp_number_t>::quiet_NaN();
     }
-
     spbase *var = mc->variables._varptrs[name];
-
     switch (var->dattype)
     {
     case SP_INT:
@@ -331,11 +335,15 @@ SPEXPORT sp_number_t sp_get_number(sp_data_t p_data, const char* name)
         spvar<bool> *v = static_cast<spvar<bool>*>(var);
         return (sp_number_t)(v->val ? 1. : 0.);
     }
+    case SP_STRING: //only if combo
+    {
+        //spvar<int>* v = static_cast<spvar<int>*>();
+        return (sp_number_t) var->mapval();
+    }
 
     default:
         break;
     }
-
 }
 
 /** Returns the value of a @a SP_STRING variable with the given name. */
@@ -355,13 +363,13 @@ SPEXPORT const char *sp_get_string(sp_data_t p_data, const char *name)
     int dattype = mc->variables._varptrs.at(name)->dattype;
     if (dattype != SP_DATTYPE::SP_STRING)
     {
-        std::string msg = "Data type of " + std::string(name) + " is not compatible with sp_get_string. \n" + __FILE__ + ":" + my_to_string(__LINE__);
+        std::string msg = "Data type of " + std::string(name) + " is not compatible with sp_get_string.";
         SC->message_callback(msg.c_str(), SC->message_callback_data);
         return std::numeric_limits<const char*>::quiet_NaN();
     }
     spvar<std::string>* ret = static_cast<spvar<std::string>*>(mc->variables._varptrs.at(name));
     
-    return ret->val.c_str(); //strdup(ret.c_str());
+    return ret->val.c_str();
 }
 
 /** Returns the value of a @a SSC_ARRAY variable with the given name. */
@@ -385,7 +393,7 @@ SPEXPORT sp_number_t *sp_get_array(sp_data_t p_data, const char *name, int *leng
     int dattype = mc->variables._varptrs.at(name)->dattype;
     if (!(dattype == SP_DATTYPE::SP_VEC_DOUBLE || dattype == SP_DATTYPE::SP_VEC_INTEGER))
     {
-        std::string msg = "Data type of " + std::string(name) + " is not compatible with sp_get_array. \n" + __FILE__ + ":" + my_to_string(__LINE__);
+        std::string msg = "Data type of " + std::string(name) + " is not compatible with sp_get_array.";
         SC->message_callback(msg.c_str(), SC->message_callback_data);
         return std::numeric_limits<sp_number_t*>::quiet_NaN();
     }
@@ -429,7 +437,7 @@ SPEXPORT sp_number_t *sp_get_matrix(sp_data_t p_data, const char *name, int *nro
     int dattype = mc->variables._varptrs.at(name)->dattype;
     if (dattype != SP_DATTYPE::SP_MATRIX_T)
     {
-        std::string msg = "Data type of " + std::string(name) + " is not compatible with sp_get_matrix. \n" + __FILE__ + ":" + my_to_string(__LINE__);
+        std::string msg = "Data type of " + std::string(name) + " is not compatible with sp_get_matrix.";
         SC->message_callback(msg.c_str(), SC->message_callback_data);
         return std::numeric_limits<sp_number_t*>::quiet_NaN();
     }
