@@ -741,9 +741,7 @@ SPEXPORT bool sp_generate_layout(sp_data_t p_data, int nthreads = 0) //, bool sa
         return false;
     }
 
-    //I think this function needs to be accessed by the API.  
     std::string weatherfile_str = std::string(V->amb.weather_file.val);
-
     Ambient::readWeatherFile(*V);
 
     //Saving local verison of weather data
