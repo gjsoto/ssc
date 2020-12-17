@@ -82,12 +82,16 @@ SPEXPORT sp_data_t sp_data_create()
     return static_cast<sp_data_t> (new api_helper);
 }
 
-SPEXPORT void sp_data_free(sp_data_t p_data)
+SPEXPORT bool sp_data_free(sp_data_t p_data)
 {
     api_helper *mc = static_cast<api_helper*>(p_data);
 
     if (mc)
+    {
         delete mc;
+        return true;
+    }
+    return false;
 }
 
 SPEXPORT void var_free_memory(sp_number_t* varptr)
@@ -248,10 +252,6 @@ SPEXPORT bool sp_set_array(sp_data_t p_data, const char *name, sp_number_t *pval
 /** Assigns value of type @a SSC_MATRIX . Matrices are specified as a continuous array, in row-major order.  Example: the matrix [[5,2,3],[9,1,4]] is stored as [5,2,3,9,1,4]. */
 SPEXPORT bool sp_set_matrix(sp_data_t p_data, const char *name, sp_number_t *pvalues, int nrows, int ncols)
 {
-    /*
-    rows separated by ';'
-    cols separated by ','
-    */
     api_helper *mc = static_cast<api_helper*>(p_data);
     SimControl* SC = &mc->sim_control;
 
@@ -275,6 +275,10 @@ SPEXPORT bool sp_set_matrix(sp_data_t p_data, const char *name, sp_number_t *pva
     std::string sname = (std::string)name;
 
     //collect the array data into a string with correct format
+    /*
+    rows separated by ';'
+    cols separated by ','
+    */
     std::stringstream matrix_string;
     for (size_t i = 0; i < nrows; i++)
     {
@@ -317,6 +321,7 @@ SPEXPORT sp_number_t sp_get_number(sp_data_t p_data, const char* name)
         SC->message_callback(msg.c_str(), SC->message_callback_data);
         return std::numeric_limits<sp_number_t>::quiet_NaN();
     }
+
     spbase *var = mc->variables._varptrs[name];
     switch (var->dattype)
     {
@@ -342,7 +347,7 @@ SPEXPORT sp_number_t sp_get_number(sp_data_t p_data, const char* name)
     }
 
     default:
-        break;
+        return std::numeric_limits<sp_number_t>::quiet_NaN();
     }
 }
 
@@ -498,7 +503,7 @@ SPEXPORT int sp_add_receiver(sp_data_t p_data, const char* receiver_name)
     {
         std::string msg = "Receiver name '" + tname + "' is not unique.  Please enter a unique name for this geometry.";
         SC->message_callback(msg.c_str(), SC->message_callback_data);
-        return 0;
+        return -1;
     }
 
     //Add a receiver
@@ -517,7 +522,7 @@ SPEXPORT int sp_add_receiver(sp_data_t p_data, const char* receiver_name)
     return V->recs.back().id.val; 
 }
 
-SPEXPORT int sp_drop_receiver(sp_data_t p_data, const char* receiver_name)
+SPEXPORT bool sp_drop_receiver(sp_data_t p_data, const char* receiver_name)
 {
     /*
 	Drop a receiver from the current solar field
@@ -537,13 +542,13 @@ SPEXPORT int sp_drop_receiver(sp_data_t p_data, const char* receiver_name)
             //delete the item
             V->drop_receiver(V->recs.at(i).id.val);
             mc->solarfield.Create(*V);
-            return 1;
+            return true;
         }
     }
 
     std::string msg = "Receiver name '" + tname + "' was not found.";
     SC->message_callback(msg.c_str(), SC->message_callback_data);
-    return 0;
+    return false;
 }
 
 SPEXPORT int sp_add_heliostat_template(sp_data_t p_data, const char* heliostat_name)
@@ -570,7 +575,7 @@ SPEXPORT int sp_add_heliostat_template(sp_data_t p_data, const char* heliostat_n
     {
         std::string msg = "Heliostat name '" + tname + "' is not unique.  Please enter a unique name for this heliostat template.";
         SC->message_callback(msg.c_str(), SC->message_callback_data);
-        return 0;
+        return -1;
     }
 
     int ind = (int) V->hels.size();
@@ -584,7 +589,7 @@ SPEXPORT int sp_add_heliostat_template(sp_data_t p_data, const char* heliostat_n
     return V->hels.back().id.val;
 }
 
-SPEXPORT int sp_drop_heliostat_template(sp_data_t p_data, const char* heliostat_name)
+SPEXPORT bool sp_drop_heliostat_template(sp_data_t p_data, const char* heliostat_name)
 {
     /*
 	Delete (drop) the specified heliostat template from the current setup. Returns true if successful.
@@ -605,15 +610,15 @@ SPEXPORT int sp_drop_heliostat_template(sp_data_t p_data, const char* heliostat_
             //delete the item
             V->drop_heliostat(V->hels.at(i).id.val);
             mc->solarfield.Create(*V);
-            return 1;
+            return true;
         }
     }
     std::string msg = "Heliostat template name '" + tname + "' was not found.";
     SC->message_callback(msg.c_str(), SC->message_callback_data);
-    return 0;
+    return false;
 }
 
-SPEXPORT int sp_update_geometry(sp_data_t p_data)
+SPEXPORT bool sp_update_geometry(sp_data_t p_data)
 {
     /*
 	Refresh the solar field, receiver, or ambient condition settings based on the current parameter settings.
@@ -630,7 +635,7 @@ SPEXPORT int sp_update_geometry(sp_data_t p_data)
         //no layout exists, so we should be calling the 'run_layout' method instead
         std::string msg = "No layout exists, so the 'update_geometry' function cannot be executed. Please first create or import a layout using 'run_layout'.";
         SC->message_callback(msg.c_str(), SC->message_callback_data);
-        return 0;
+        return false;
     }
 
     std::string weatherfile_str = std::string(V->amb.weather_file.val);
@@ -639,7 +644,12 @@ SPEXPORT int sp_update_geometry(sp_data_t p_data)
     
     //Saving local verison of weather data
     weatherfile wf;
-    if (!wf.open(weatherfile_str)) return 0; //error
+    if (!wf.open(weatherfile_str))
+    {
+        std::string msg = "'update_geometry' function cannot find weather file at " + weatherfile_str + "\n Please adjust desired file path or location to be consistent.";
+        SC->message_callback(msg.c_str(), SC->message_callback_data);
+        return false; //error
+    }
 
     //Update the weather data
     std::string linef = "%d,%d,%d,%.2f,%.1f,%.1f,%.1f";
@@ -676,7 +686,7 @@ SPEXPORT int sp_update_geometry(sp_data_t p_data)
         {
             std::string msg = "An error occurred when preparing the updated field geometry in the call 'update_geometry'.";
             SC->message_callback(msg.c_str(), SC->message_callback_data);
-            return 0;
+            return false;
         }
 
         SF->calcHeliostatArea();
@@ -692,23 +702,23 @@ SPEXPORT int sp_update_geometry(sp_data_t p_data)
         {
             std::string msg = "An error occurred when preparing the updated field geometry in the call 'update_geometry'.";
             SC->message_callback(msg.c_str(), SC->message_callback_data);
-            return 0;
+            return false;
         }
     }
     catch (std::exception &e)
     {
         std::string msg = "An error occurred when preparing the updated field geometry in the call 'update_geometry'. \n ERROR: "+ (std::string)e.what();
         SC->message_callback(msg.c_str(), SC->message_callback_data);
-        return 0;
+        return false;
     }
     catch (...)
     {
         std::string msg = "Unknown error when executing 'update_geometry'.";
         SC->message_callback(msg.c_str(), SC->message_callback_data);
-        return 0;
+        return false;
     }
 
-    return 1;
+    return true;
 }
 
 SPEXPORT bool sp_generate_layout(sp_data_t p_data, int nthreads = 0) //, bool save_detail = true)

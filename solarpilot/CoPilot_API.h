@@ -36,7 +36,7 @@ extern "C" {
     SPEXPORT sp_data_t sp_data_create();
 
     /** Frees the memory associated with a data object, where p_data is the data container to free. */
-    SPEXPORT void sp_data_free(sp_data_t p_data);
+    SPEXPORT bool sp_data_free(sp_data_t p_data);
 
     SPEXPORT void var_free_memory(sp_number_t* varptr);
 
@@ -64,13 +64,13 @@ extern "C" {
 
     SPEXPORT int sp_add_receiver(sp_data_t p_data, const char* receiver_name);
 
-    SPEXPORT int sp_drop_receiver(sp_data_t p_data, const char* receiver_name);
+    SPEXPORT bool sp_drop_receiver(sp_data_t p_data, const char* receiver_name);
 
     SPEXPORT int sp_add_heliostat_template(sp_data_t p_data, const char* heliostat_name);
 
-    SPEXPORT int sp_drop_heliostat_template(sp_data_t p_data, const char* heliostat_name);
+    SPEXPORT bool sp_drop_heliostat_template(sp_data_t p_data, const char* heliostat_name);
 
-    SPEXPORT int sp_update_geometry(sp_data_t p_data);
+    SPEXPORT bool sp_update_geometry(sp_data_t p_data);
 
     SPEXPORT bool sp_generate_layout(sp_data_t p_data, int nthreads);
 
@@ -113,5 +113,3 @@ extern "C" {
 
 
 #endif  // _COPILOT_API_
-
-SPEXPORT int sp_update_geometry(sp_data_t p_data);
