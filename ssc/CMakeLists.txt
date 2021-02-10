@@ -75,6 +75,7 @@ set(SSC_SRC
 		cmod_mhk_eqns.h
 		cmod_mhk_tidal.cpp
 		cmod_mhk_wave.cpp
+		cmod_nuclear_tes.cpp
 		cmod_poacalib.cpp
 		cmod_pv6parmod.cpp
 		cmod_pv_get_shade_loss_mpp.cpp

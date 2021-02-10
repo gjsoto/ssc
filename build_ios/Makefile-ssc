@@ -26,6 +26,7 @@ TARGET=ssc_${ARCH}.a
 
 OBJECTS = \
 	cmod_singlediode.o \
+	cmod_nuclear_tes.o \
 	cmod_ui_tes_calcs.o \
 	cmod_ui_udpc_checks.o \
 	csp_common.o \
