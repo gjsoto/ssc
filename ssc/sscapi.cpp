@@ -78,6 +78,7 @@ SSCEXPORT const char *ssc_build_info()
 
 extern module_entry_info
 /* extern declarations of modules for linking */
+    cm_entry_nuclear_tes,
 	cm_entry_singlediode,
 	cm_entry_singlediodeparams,
 	cm_entry_iec61853par,
@@ -169,13 +170,13 @@ extern module_entry_info
 	cm_entry_mhk_costs,
 	cm_entry_wave_file_reader,
 	cm_entry_grid,
-	cm_entry_battery_stateful,
-    cm_entry_nuclear_tes
+	cm_entry_battery_stateful
 	;
 
 /* official module table */
 static module_entry_info *module_table[] = {
-	&cm_entry_singlediode,
+    &cm_entry_nuclear_tes,
+    &cm_entry_singlediode,
 	&cm_entry_singlediodeparams,
 	&cm_entry_iec61853par,
 	&cm_entry_iec61853interp,
@@ -267,13 +268,11 @@ static module_entry_info *module_table[] = {
 	&cm_entry_wave_file_reader,
 	&cm_entry_grid,
 	&cm_entry_battery_stateful,
-    &cm_entry_nuclear_tes,
 	0 };
 
 SSCEXPORT ssc_module_t ssc_module_create( const char *name )
 {
 	std::string lname = util::lower_case( name );
-
 	int i=0;
 	while ( module_table[i] != 0
 		 && module_table[i]->f_create != 0 )
