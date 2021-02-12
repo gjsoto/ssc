@@ -260,6 +260,8 @@ public:
         std::string m_ampl_data_dir;
         std::string m_ampl_exec_call;
         std::string m_ampl_thread_id;
+        bool m_is_bash_call;
+        bool m_is_python_call;
 		
         bool m_is_tod_pc_target_also_pc_max;
 
@@ -352,6 +354,8 @@ public:
             m_is_ampl_engine = false;           //run dispatch with external AMPL engine?
             m_ampl_data_dir = "";               //directory where files should be written 
             m_ampl_exec_call = "";
+            m_is_bash_call = false;             //--//is execution through bash script?
+            m_is_python_call = false;           //--//is execution through python script?
 			
             m_is_tod_pc_target_also_pc_max = false;
 

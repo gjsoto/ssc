@@ -78,6 +78,8 @@ public:
         std::string ampl_data_dir;  //directory to write ampl data files
         std::string ampl_exec_call; //system call for running ampl
         std::string ampl_thread_id;  //unique ID for running multiple AMPL files simultaneously
+        bool is_bash_call;          //--// external call to bash script?
+        bool is_python_call;        //--// external call to python script?
 
         s_solver_params()
         {
