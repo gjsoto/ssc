@@ -758,6 +758,8 @@ void C_csp_solver::Ssimulate(C_csp_solver::S_sim_setup & sim_setup)
     dispatch.solver_params.presolve_type = mc_tou.mc_dispatch_params.m_presolve_type;
     dispatch.solver_params.is_write_ampl_dat = mc_tou.mc_dispatch_params.m_is_write_ampl_dat;
     dispatch.solver_params.is_ampl_engine = mc_tou.mc_dispatch_params.m_is_ampl_engine;
+    dispatch.solver_params.is_bash_call = mc_tou.mc_dispatch_params.m_is_bash_call;
+    dispatch.solver_params.is_python_call = mc_tou.mc_dispatch_params.m_is_python_call;
     dispatch.solver_params.ampl_data_dir = mc_tou.mc_dispatch_params.m_ampl_data_dir;
     dispatch.solver_params.ampl_exec_call = mc_tou.mc_dispatch_params.m_ampl_exec_call;
     dispatch.solver_params.ampl_thread_id = mc_tou.mc_dispatch_params.m_ampl_thread_id;
