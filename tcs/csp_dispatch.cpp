@@ -2568,11 +2568,35 @@ bool csp_dispatch_opt::optimize_ampl()
 		system(solver_params.ampl_exec_call.c_str());
 
 		//Use the run file name as the out file name
-		int sufpos = solver_params.ampl_exec_call.find(".run");
+        //--// allowing for calls to python or bash script
+        std::string file_ending; 
+        std::string delim;
+        if (solver_params.is_python_call)
+        {
+            // ampl_exec_call is something like "python <filename>.py"
+            file_ending = ".py"; 
+            delim = " "; //using the space between python and <filename> as delimiter
+        }
+        else if (solver_params.is_bash_call)
+        {
+            // ampl_exec_call is something like "./<bashscriptname>.sh"
+            file_ending = ".sh";
+            delim = "/"; // using the backslash as the delimiter
+        }
+        else
+        {
+            // default ampl_exec_call
+            file_ending = ".run";
+            delim = "<";
+        }
+        //--//
+        
+		int sufpos = solver_params.ampl_exec_call.find(file_ending);
+        
 		if (sufpos < solver_params.ampl_exec_call.size())
 		{
 			std::string execsub = solver_params.ampl_exec_call.substr(0, sufpos);
-			std::vector<std::string> parse = util::split(execsub, "<");
+			std::vector<std::string> parse = util::split(execsub, delim);
 			if (parse.size() > 1)
 			{
                 outfile << parse.at(1);
