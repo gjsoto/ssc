@@ -37,7 +37,7 @@ OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "csp_solver_pt_sf_perf_interp.h"
 #include "csp_solver_mspt_receiver_222.h"
 #include "csp_solver_mspt_receiver.h"
-#include "csp_solver_mspt_collector_receiver.h"
+#include "csp_solver_heating_plant_designator.h"
 #include "csp_solver_pc_Rankine_indirect_224.h"
 #include "csp_solver_pc_sco2.h"
 #include "csp_solver_two_tank_tes.h"
@@ -2019,7 +2019,7 @@ public:
         //receiver.init();
 
         // Now try to instantiate mspt_collector_receiver
-        C_csp_mspt_collector_receiver collector_receiver(heliostatfield, *receiver);
+        C_csp_heating_plant_designator collector_receiver(heliostatfield, *receiver);
         // Then try init() call here, which should call inits from both classes
         //collector_receiver.init();
 
@@ -2027,39 +2027,39 @@ public:
         // *******************************************************
         // Set receiver outputs
         //float *p_q_thermal_copy = allocate("Q_thermal_123", n_steps_fixed);
-        collector_receiver.mc_reported_outputs.assign(C_csp_mspt_collector_receiver::E_FIELD_Q_DOT_INC, allocate("q_sf_inc", n_steps_fixed), n_steps_fixed);
-        collector_receiver.mc_reported_outputs.assign(C_csp_mspt_collector_receiver::E_FIELD_ETA_OPT, allocate("eta_field", n_steps_fixed), n_steps_fixed);
-        collector_receiver.mc_reported_outputs.assign(C_csp_mspt_collector_receiver::E_FIELD_ADJUST, allocate("sf_adjust_out", n_steps_fixed), n_steps_fixed);
-        collector_receiver.mc_reported_outputs.assign(C_csp_mspt_collector_receiver::E_IS_FIELD_TRACKING_FINAL, allocate("is_field_tracking_final", n_steps_fixed), n_steps_fixed);
-        collector_receiver.mc_reported_outputs.assign(C_csp_mspt_collector_receiver::E_REC_OP_MODE_FINAL, allocate("rec_op_mode_final", n_steps_fixed), n_steps_fixed);
-        collector_receiver.mc_reported_outputs.assign(C_csp_mspt_collector_receiver::E_REC_STARTUP_TIME_REMAIN_FINAL, allocate("rec_startup_time_remain_final", n_steps_fixed), n_steps_fixed);
-        collector_receiver.mc_reported_outputs.assign(C_csp_mspt_collector_receiver::E_REC_STARTUP_ENERGY_REMAIN_FINAL, allocate("rec_startup_energy_remain_final", n_steps_fixed), n_steps_fixed);
+        collector_receiver.mc_reported_outputs.assign(C_csp_heating_plant_designator::E_FIELD_Q_DOT_INC, allocate("q_sf_inc", n_steps_fixed), n_steps_fixed);
+        collector_receiver.mc_reported_outputs.assign(C_csp_heating_plant_designator::E_FIELD_ETA_OPT, allocate("eta_field", n_steps_fixed), n_steps_fixed);
+        collector_receiver.mc_reported_outputs.assign(C_csp_heating_plant_designator::E_FIELD_ADJUST, allocate("sf_adjust_out", n_steps_fixed), n_steps_fixed);
+        collector_receiver.mc_reported_outputs.assign(C_csp_heating_plant_designator::E_IS_FIELD_TRACKING_FINAL, allocate("is_field_tracking_final", n_steps_fixed), n_steps_fixed);
+        collector_receiver.mc_reported_outputs.assign(C_csp_heating_plant_designator::E_REC_OP_MODE_FINAL, allocate("rec_op_mode_final", n_steps_fixed), n_steps_fixed);
+        collector_receiver.mc_reported_outputs.assign(C_csp_heating_plant_designator::E_REC_STARTUP_TIME_REMAIN_FINAL, allocate("rec_startup_time_remain_final", n_steps_fixed), n_steps_fixed);
+        collector_receiver.mc_reported_outputs.assign(C_csp_heating_plant_designator::E_REC_STARTUP_ENERGY_REMAIN_FINAL, allocate("rec_startup_energy_remain_final", n_steps_fixed), n_steps_fixed);
 
-        collector_receiver.mc_reported_outputs.assign(C_csp_mspt_collector_receiver::E_Q_DOT_INC, allocate("q_dot_rec_inc", n_steps_fixed), n_steps_fixed);
-        collector_receiver.mc_reported_outputs.assign(C_csp_mspt_collector_receiver::E_ETA_THERMAL, allocate("eta_therm", n_steps_fixed), n_steps_fixed);
-        collector_receiver.mc_reported_outputs.assign(C_csp_mspt_collector_receiver::E_Q_DOT_THERMAL, allocate("Q_thermal", n_steps_fixed), n_steps_fixed);
-        collector_receiver.mc_reported_outputs.assign(C_csp_mspt_collector_receiver::E_M_DOT_HTF, allocate("m_dot_rec", n_steps_fixed), n_steps_fixed);
-        collector_receiver.mc_reported_outputs.assign(C_csp_mspt_collector_receiver::E_Q_DOT_STARTUP, allocate("q_startup", n_steps_fixed), n_steps_fixed);
-        collector_receiver.mc_reported_outputs.assign(C_csp_mspt_collector_receiver::E_T_HTF_IN, allocate("T_rec_in", n_steps_fixed), n_steps_fixed);
-        collector_receiver.mc_reported_outputs.assign(C_csp_mspt_collector_receiver::E_T_HTF_OUT, allocate("T_rec_out", n_steps_fixed), n_steps_fixed);
-        collector_receiver.mc_reported_outputs.assign(C_csp_mspt_collector_receiver::E_T_HTF_OUT_REC, allocate("T_panel_out", n_steps_fixed), n_steps_fixed);
-        collector_receiver.mc_reported_outputs.assign(C_csp_mspt_collector_receiver::E_Q_DOT_PIPE_LOSS, allocate("q_piping_losses", n_steps_fixed), n_steps_fixed);
-        collector_receiver.mc_reported_outputs.assign(C_csp_mspt_collector_receiver::E_Q_DOT_LOSS, allocate("q_thermal_loss", n_steps_fixed), n_steps_fixed);
+        collector_receiver.mc_reported_outputs.assign(C_csp_heating_plant_designator::E_Q_DOT_INC, allocate("q_dot_rec_inc", n_steps_fixed), n_steps_fixed);
+        collector_receiver.mc_reported_outputs.assign(C_csp_heating_plant_designator::E_ETA_THERMAL, allocate("eta_therm", n_steps_fixed), n_steps_fixed);
+        collector_receiver.mc_reported_outputs.assign(C_csp_heating_plant_designator::E_Q_DOT_THERMAL, allocate("Q_thermal", n_steps_fixed), n_steps_fixed);
+        collector_receiver.mc_reported_outputs.assign(C_csp_heating_plant_designator::E_M_DOT_HTF, allocate("m_dot_rec", n_steps_fixed), n_steps_fixed);
+        collector_receiver.mc_reported_outputs.assign(C_csp_heating_plant_designator::E_Q_DOT_STARTUP, allocate("q_startup", n_steps_fixed), n_steps_fixed);
+        collector_receiver.mc_reported_outputs.assign(C_csp_heating_plant_designator::E_T_HTF_IN, allocate("T_rec_in", n_steps_fixed), n_steps_fixed);
+        collector_receiver.mc_reported_outputs.assign(C_csp_heating_plant_designator::E_T_HTF_OUT, allocate("T_rec_out", n_steps_fixed), n_steps_fixed);
+        collector_receiver.mc_reported_outputs.assign(C_csp_heating_plant_designator::E_T_HTF_OUT_REC, allocate("T_panel_out", n_steps_fixed), n_steps_fixed);
+        collector_receiver.mc_reported_outputs.assign(C_csp_heating_plant_designator::E_Q_DOT_PIPE_LOSS, allocate("q_piping_losses", n_steps_fixed), n_steps_fixed);
+        collector_receiver.mc_reported_outputs.assign(C_csp_heating_plant_designator::E_Q_DOT_LOSS, allocate("q_thermal_loss", n_steps_fixed), n_steps_fixed);
 
-        collector_receiver.mc_reported_outputs.assign(C_csp_mspt_collector_receiver::E_P_HEATTRACE, allocate("P_rec_heattrace", n_steps_fixed), n_steps_fixed);
-        collector_receiver.mc_reported_outputs.assign(C_csp_mspt_collector_receiver::E_T_HTF_OUT_END, allocate("T_rec_out_end", n_steps_fixed), n_steps_fixed);
-        collector_receiver.mc_reported_outputs.assign(C_csp_mspt_collector_receiver::E_T_HTF_OUT_END_REC, allocate("T_panel_out_end", n_steps_fixed), n_steps_fixed);
-        collector_receiver.mc_reported_outputs.assign(C_csp_mspt_collector_receiver::E_T_HTF_OUT_MAX, allocate("T_rec_out_max", n_steps_fixed), n_steps_fixed);
-        collector_receiver.mc_reported_outputs.assign(C_csp_mspt_collector_receiver::E_T_HTF_PANEL_OUT_MAX, allocate("T_panel_out_max", n_steps_fixed), n_steps_fixed);
+        collector_receiver.mc_reported_outputs.assign(C_csp_heating_plant_designator::E_P_HEATTRACE, allocate("P_rec_heattrace", n_steps_fixed), n_steps_fixed);
+        collector_receiver.mc_reported_outputs.assign(C_csp_heating_plant_designator::E_T_HTF_OUT_END, allocate("T_rec_out_end", n_steps_fixed), n_steps_fixed);
+        collector_receiver.mc_reported_outputs.assign(C_csp_heating_plant_designator::E_T_HTF_OUT_END_REC, allocate("T_panel_out_end", n_steps_fixed), n_steps_fixed);
+        collector_receiver.mc_reported_outputs.assign(C_csp_heating_plant_designator::E_T_HTF_OUT_MAX, allocate("T_rec_out_max", n_steps_fixed), n_steps_fixed);
+        collector_receiver.mc_reported_outputs.assign(C_csp_heating_plant_designator::E_T_HTF_PANEL_OUT_MAX, allocate("T_panel_out_max", n_steps_fixed), n_steps_fixed);
 
-        collector_receiver.mc_reported_outputs.assign(C_csp_mspt_collector_receiver::E_T_WALL_INLET, allocate("T_wall_rec_inlet", n_steps_fixed), n_steps_fixed);
-        collector_receiver.mc_reported_outputs.assign(C_csp_mspt_collector_receiver::E_T_WALL_OUTLET, allocate("T_wall_rec_outlet", n_steps_fixed), n_steps_fixed);
-        collector_receiver.mc_reported_outputs.assign(C_csp_mspt_collector_receiver::E_T_RISER, allocate("T_wall_riser", n_steps_fixed), n_steps_fixed);
-        collector_receiver.mc_reported_outputs.assign(C_csp_mspt_collector_receiver::E_T_DOWNC, allocate("T_wall_downcomer", n_steps_fixed), n_steps_fixed);
+        collector_receiver.mc_reported_outputs.assign(C_csp_heating_plant_designator::E_T_WALL_INLET, allocate("T_wall_rec_inlet", n_steps_fixed), n_steps_fixed);
+        collector_receiver.mc_reported_outputs.assign(C_csp_heating_plant_designator::E_T_WALL_OUTLET, allocate("T_wall_rec_outlet", n_steps_fixed), n_steps_fixed);
+        collector_receiver.mc_reported_outputs.assign(C_csp_heating_plant_designator::E_T_RISER, allocate("T_wall_riser", n_steps_fixed), n_steps_fixed);
+        collector_receiver.mc_reported_outputs.assign(C_csp_heating_plant_designator::E_T_DOWNC, allocate("T_wall_downcomer", n_steps_fixed), n_steps_fixed);
 
-		collector_receiver.mc_reported_outputs.assign(C_csp_mspt_collector_receiver::E_CLEARSKY, allocate("clearsky", n_steps_fixed), n_steps_fixed);
-		collector_receiver.mc_reported_outputs.assign(C_csp_mspt_collector_receiver::E_Q_DOT_THERMAL_CSKY_SS, allocate("Q_thermal_ss_csky", n_steps_fixed), n_steps_fixed);
-		collector_receiver.mc_reported_outputs.assign(C_csp_mspt_collector_receiver::E_Q_DOT_THERMAL_SS, allocate("Q_thermal_ss", n_steps_fixed), n_steps_fixed);
+		collector_receiver.mc_reported_outputs.assign(C_csp_heating_plant_designator::E_CLEARSKY, allocate("clearsky", n_steps_fixed), n_steps_fixed);
+		collector_receiver.mc_reported_outputs.assign(C_csp_heating_plant_designator::E_Q_DOT_THERMAL_CSKY_SS, allocate("Q_thermal_ss_csky", n_steps_fixed), n_steps_fixed);
+		collector_receiver.mc_reported_outputs.assign(C_csp_heating_plant_designator::E_Q_DOT_THERMAL_SS, allocate("Q_thermal_ss", n_steps_fixed), n_steps_fixed);
 
         // Thermal energy storage 
         C_csp_two_tank_tes storage;

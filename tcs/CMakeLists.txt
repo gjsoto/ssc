@@ -29,6 +29,7 @@ set(TCS_SRC
 		csp_radiator.cpp
 		csp_solver_core.cpp
 		csp_solver_gen_collector_receiver.cpp
+		csp_solver_heating_plant_designator.cpp
 		csp_solver_lf_dsg_collector_receiver.cpp
 		csp_solver_mono_eq_methods.cpp
 		csp_solver_mspt_collector_receiver.cpp
@@ -122,6 +123,7 @@ set(TCS_SRC
 		csp_radiator.h
 		csp_solver_core.h
 		csp_solver_gen_collector_receiver.h
+		csp_solver_heating_plant_designator.h
 		csp_solver_lf_dsg_collector_receiver.h
 		csp_solver_mspt_collector_receiver.h
 		csp_solver_mspt_receiver.h

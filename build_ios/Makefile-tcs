@@ -101,6 +101,7 @@ OBJECTS = tcskernel.o \
 	csp_solver_trough_collector_receiver.o \
 	csp_solver_lf_dsg_collector_receiver.o \
 	csp_solver_gen_collector_receiver.o \
+	csp_solver_heating_plant_designator.o \
 	csp_solver_core.o \
 	csp_solver_mono_eq_methods.o \
 	csp_system_costs.o \
