@@ -322,7 +322,7 @@ var_data *var_table::lookup( const std::string &name )
     var_hash::iterator it = m_hash.find(name );
     if (it == m_hash.end())
         it = m_hash.find( util::lower_case(name) );
-	if ( it != m_hash.end() )
+    if ( it != m_hash.end() )
 		return (*it).second;
 	else
 		return NULL;
