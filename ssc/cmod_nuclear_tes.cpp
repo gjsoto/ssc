@@ -2015,12 +2015,15 @@ public:
 		}
         
         // Nuclear class
-        std::unique_ptr<C_nuclear> nuclear_plant = std::unique_ptr<C_nuclear>(new C_nuclear());;
-  
-        if (as_boolean("is_nuclear_only"))
+        std::unique_ptr<C_nuclear> nuclear_plant = std::unique_ptr<C_nuclear>(new C_nuclear());
+        nuclear_plant->m_is_nuclear_only = as_boolean("is_nuclear_only");
+        
+        if (nuclear_plant->m_is_nuclear_only)
         {
            nuclear_plant->m_T_htf_hot_des = as_double("T_htf_hot_des");             //[C]
-           nuclear_plant->m_T_htf_cold_des = as_double("T_htf_cold_des");           //[C]   
+           nuclear_plant->m_T_htf_cold_des = as_double("T_htf_cold_des");           //[C] 
+           nuclear_plant->m_A_sf = as_double("A_sf");  
+           nuclear_plant->m_q_rec_des = as_double("P_ref")/as_double("design_eff")*as_double("solarm");
         }
 
 
@@ -2030,7 +2033,7 @@ public:
         //receiver.init();
 
         // Now try to instantiate mspt_collector_receiver
-        C_csp_heating_plant_designator collector_receiver(heliostatfield, *receiver);
+        C_csp_heating_plant_designator collector_receiver(heliostatfield, *receiver, *nuclear_plant);
         // Then try init() call here, which should call inits from both classes
         //collector_receiver.init();
 

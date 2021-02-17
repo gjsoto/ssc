@@ -62,11 +62,16 @@ static C_csp_reported_outputs::S_output_info S_output_info[] =
 };
 
 C_csp_heating_plant_designator::C_csp_heating_plant_designator(C_pt_sf_perf_interp & pt_heliostatfield,
-	C_pt_receiver & pt_receiver):
+	C_pt_receiver & pt_receiver, C_nuclear & nuclear):
 	mc_pt_heliostatfield(pt_heliostatfield),
-	mc_pt_receiver(pt_receiver)
+	mc_pt_receiver(pt_receiver), 
+    mc_nuclear(nuclear)
 {
 	mc_reported_outputs.construct(S_output_info);
+    
+    //determining if we're using a nuclear plant instead of receiver+heliostatfield
+    if (nuclear.m_is_nuclear_only)
+        m_use_nuclear = true;
 }
 
 C_csp_heating_plant_designator::~C_csp_heating_plant_designator()
@@ -75,13 +80,25 @@ C_csp_heating_plant_designator::~C_csp_heating_plant_designator()
 void C_csp_heating_plant_designator::init(const C_csp_collector_receiver::S_csp_cr_init_inputs init_inputs, 
 				C_csp_collector_receiver::S_csp_cr_solved_params & solved_params)
 {
-	mc_pt_heliostatfield.init();
-	mc_pt_receiver.init();
+	if (!m_use_nuclear)
+    {//continuing with CSP as normal
+        mc_pt_heliostatfield.init();
+        mc_pt_receiver.init();
 
-	solved_params.m_T_htf_cold_des = mc_pt_receiver.m_T_htf_cold_des;       //[K]
-    solved_params.m_T_htf_hot_des = mc_pt_receiver.m_T_htf_hot_des;         //[K]
-	solved_params.m_q_dot_rec_des = mc_pt_receiver.m_q_rec_des / 1.E6;		//[MW]
-	solved_params.m_A_aper_total = mc_pt_heliostatfield.ms_params.m_A_sf;	//[m^2]
+        solved_params.m_T_htf_cold_des = mc_pt_receiver.m_T_htf_cold_des;       //[K]
+        solved_params.m_T_htf_hot_des = mc_pt_receiver.m_T_htf_hot_des;         //[K]
+        solved_params.m_q_dot_rec_des = mc_pt_receiver.m_q_rec_des / 1.E6;		//[MW]
+        solved_params.m_A_aper_total = mc_pt_heliostatfield.ms_params.m_A_sf;	//[m^2]
+    }
+    else
+    {//continuing with nuclear only
+        mc_nuclear.init();
+        
+        solved_params.m_T_htf_cold_des = mc_nuclear.m_T_htf_cold_des;       //[K]
+        solved_params.m_T_htf_hot_des = mc_nuclear.m_T_htf_hot_des;         //[K]
+        solved_params.m_q_dot_rec_des = mc_nuclear.m_q_rec_des / 1.E6;		//[MW]
+        solved_params.m_A_aper_total = mc_nuclear.m_A_sf;	//[m^2]
+    }
 
 	return;
 }
