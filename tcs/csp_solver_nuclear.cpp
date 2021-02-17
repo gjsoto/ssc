@@ -33,7 +33,9 @@ C_nuclear::C_nuclear()
 
 void C_nuclear::init()
 {
-
+	m_T_htf_hot_des += 273.15;	//[K] Convert from input in [C]
+	m_T_htf_cold_des += 273.15;	//[K] Convert from input in [C]
+	m_q_rec_des *= 1.E6;		//[W] Convert from input in [MW]    
 }
 
 void C_nuclear::call(const C_csp_weatherreader::S_outputs &weather, 

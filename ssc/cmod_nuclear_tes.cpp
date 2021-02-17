@@ -135,8 +135,8 @@ static var_info _cm_vtab_nuclear_tes[] = {
 
     // Nuclear inputs
     { SSC_INPUT,     SSC_NUMBER, "is_nuclear_only",                    "Use a nuclear plant instead of CSP",                                                                                                      "",             "",                                  "System Design",                            "?=0",                                                              "",              ""},
-
-
+    { SSC_INPUT,     SSC_NUMBER, "q_dot_nuclear_des",                  "Nuclear thermal output at design conditions",                                                                                             "MW",           "",                                  "System Design",                            "is_nuclear_only=1",                                                "",              ""},
+    
     // System Design
     { SSC_INPUT,     SSC_NUMBER, "T_htf_cold_des",                     "Cold HTF inlet temperature at design conditions",                                                                                         "C",            "",                                  "System Design",                            "*",                                                                "",              ""},
     { SSC_INPUT,     SSC_NUMBER, "T_htf_hot_des",                      "Hot HTF outlet temperature at design conditions",                                                                                         "C",            "",                                  "System Design",                            "*",                                                                "",              ""},
@@ -2023,7 +2023,7 @@ public:
            nuclear_plant->m_T_htf_hot_des = as_double("T_htf_hot_des");             //[C]
            nuclear_plant->m_T_htf_cold_des = as_double("T_htf_cold_des");           //[C] 
            nuclear_plant->m_A_sf = as_double("A_sf");  
-           nuclear_plant->m_q_rec_des = as_double("P_ref")/as_double("design_eff")*as_double("solarm");
+           nuclear_plant->m_q_rec_des = as_double("q_dot_nuclear_des");
         }
 
 

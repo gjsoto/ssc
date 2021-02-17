@@ -92,7 +92,7 @@ void C_csp_heating_plant_designator::init(const C_csp_collector_receiver::S_csp_
     }
     else
     {//continuing with nuclear only
-        mc_nuclear.init();
+        mc_nuclear.init(); // need better init, for now only converts T's and q's units
         
         solved_params.m_T_htf_cold_des = mc_nuclear.m_T_htf_cold_des;       //[K]
         solved_params.m_T_htf_hot_des = mc_nuclear.m_T_htf_hot_des;         //[K]
