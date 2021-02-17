@@ -26,6 +26,7 @@ OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "csp_solver_core.h"
 #include "csp_solver_pt_sf_perf_interp.h"
 #include "csp_solver_pt_receiver.h"
+#include "csp_solver_nuclear.h"
 
 
 
@@ -35,6 +36,7 @@ class C_csp_heating_plant_designator : public C_csp_collector_receiver
 private:
 	C_pt_sf_perf_interp &mc_pt_heliostatfield;
 	C_pt_receiver &mc_pt_receiver;
+    C_nuclear &mc_nuclear;
 
 public:
 	
@@ -72,10 +74,12 @@ public:
         E_REC_STARTUP_ENERGY_REMAIN_FINAL   //[W-hr] Final receiver startup energy remaining
 	};
 	
-	C_csp_reported_outputs mc_reported_outputs;
+	bool m_use_nuclear;
+    
+    C_csp_reported_outputs mc_reported_outputs;
 	
 	C_csp_heating_plant_designator(C_pt_sf_perf_interp & pt_heliostatfield,
-		C_pt_receiver & pt_receiver);
+		C_pt_receiver & pt_receiver, C_nuclear & nuclear);
 
 	~C_csp_heating_plant_designator();
 
