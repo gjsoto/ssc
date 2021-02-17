@@ -42,6 +42,7 @@ OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "csp_solver_pc_sco2.h"
 #include "csp_solver_two_tank_tes.h"
 #include "csp_solver_tou_block_schedules.h"
+#include "csp_solver_nuclear.h"
 
 #include "csp_system_costs.h"
 
@@ -132,7 +133,8 @@ static var_info _cm_vtab_nuclear_tes[] = {
     { SSC_INPUT,     SSC_NUMBER, "csp.pt.sf.land_overhead_factor",     "Land overhead factor",                                                                                                                    "",             "",                                  "Heliostat Field",                          "*",                                                                "",              ""},
 
 
-
+    // Nuclear inputs
+    { SSC_INPUT,     SSC_NUMBER, "is_nuclear_only",                    "Use a nuclear plant instead of CSP",                                                                                                      "",             "",                                  "System Design",                            "?=0",                                                              "",              ""},
 
 
     // System Design
@@ -188,7 +190,7 @@ static var_info _cm_vtab_nuclear_tes[] = {
 	{ SSC_INPUT,     SSC_NUMBER, "min_preheat_time",                   "Minimum time required in preheat startup stage",                                                                                          "hr",			  "",                                  "Tower and Receiver",                       "?=0.0",                                                         "",              ""},
 	{ SSC_INPUT,     SSC_NUMBER, "min_fill_time",                      "Startup time delay for filling the receiver/piping",                                                                                      "hr",			  "",                                  "Tower and Receiver",                       "?=0.1333",                                                         "",              ""},	
 	{ SSC_INPUT,     SSC_NUMBER, "startup_ramp_time",                  "Time required to reach full flux during receiver startup",                                                                                "hr",           "",                                  "Tower and Receiver",                       "?=0.1333",                                                            "",              ""},
-    { SSC_INPUT,     SSC_NUMBER, "startup_target_Tdiff",               "Target HTF T at end of startup - steady state hot HTF temperature",                                                                          "C",            "",                                  "Tower and Receiver",                       "?=-5.0",                                                           "",              ""},
+    { SSC_INPUT,     SSC_NUMBER, "startup_target_Tdiff",               "Target HTF T at end of startup - steady state hot HTF temperature",                                                                          "C",            "",                               "Tower and Receiver",                       "?=-5.0",                                                           "",              ""},
     { SSC_INPUT,     SSC_NUMBER, "is_rec_startup_from_T_soln",         "Begin receiver startup from solved temperature profiles?",                                                                                "",             "",                                  "Tower and Receiver",                       "?=0",                                                              "",              ""},
     { SSC_INPUT,     SSC_NUMBER, "is_rec_enforce_min_startup",         "Always enforce minimum startup time",                                                                                                     "",             "",                                  "Tower and Receiver",                       "?=1",                                                              "",              ""},
 
@@ -2011,6 +2013,15 @@ public:
 			for (size_t i = 0; i < n_steps_full; i++)
 				receiver->m_clearsky_data.at(i) = (double)csky[i];
 		}
+        
+        // Nuclear class
+        std::unique_ptr<C_nuclear> nuclear_plant = std::unique_ptr<C_nuclear>(new C_nuclear());;
+  
+        if (as_boolean("is_nuclear_only"))
+        {
+           nuclear_plant->m_T_htf_hot_des = as_double("T_htf_hot_des");             //[C]
+           nuclear_plant->m_T_htf_cold_des = as_double("T_htf_cold_des");           //[C]   
+        }
 
 
         // Could add optional ISCC stuff...
