@@ -28,7 +28,7 @@ OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 C_nuclear::C_nuclear()
 {
-
+    m_is_nuclear_only = false;
 }
 
 void C_nuclear::init()

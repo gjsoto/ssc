@@ -39,10 +39,17 @@ public:
 	C_csp_messages csp_messages;
 
 	// Data
+    bool m_is_nuclear_only;
 	int m_n_panels;					//[-]
 	double m_d_rec;					//[m]
 	double m_h_rec;					//[m]
-	double m_A_sf;					//[m2]
+
+    double m_T_htf_hot_des;			    //[C] hot outlet HTF temperature at design, converted to [K] in init()
+    double m_T_htf_cold_des;		    //[C] cold inlet HTF temperature at design, converted to [K] in init()
+    double m_f_rec_min;				    //[-] minimum receiver thermal output as fraction of design
+    double m_q_rec_des;				    //[MW] design nuclear thermal output, converted to [W] in init()
+    double m_A_sf;                      //[m2] "solar field" area, should delete this later
+    
 
 	C_csp_collector_receiver::E_csp_cr_modes m_mode_initial;
     double m_E_su_init;             //[W-hr] Initial startup energy
