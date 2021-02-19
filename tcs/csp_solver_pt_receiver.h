@@ -64,6 +64,7 @@ public:
 
     C_csp_messages csp_messages;        // Class to save messages for upstream classes
 
+    bool m_is_nuclear_only = false;
     double m_h_tower;				    //[m] height of the tower
     double m_epsilon;				    //[-] emissivity of the receiver panels
     double m_T_htf_hot_des;			    //[C] hot outlet HTF temperature at design, converted to [K] in init()
