@@ -617,9 +617,6 @@ static var_info _cm_vtab_nuclear_tes[] = {
     { SSC_OUTPUT,    SSC_ARRAY,  "m_dot_tes_cold_in",                  "Mass flow: TES cold in",                                                                                                                  "kg/s",         "",                                  "",                                         "*",                                                                "",              "" },
     { SSC_OUTPUT,    SSC_ARRAY,  "m_dot_field_to_cycle",               "Mass flow: field to cycle",                                                                                                               "kg/s",         "",                                  "",                                         "*",                                                                "",              "" },
     { SSC_OUTPUT,    SSC_ARRAY,  "m_dot_cycle_to_field",               "Mass flow: cycle to field",                                                                                                               "kg/s",         "",                                  "",                                         "*",                                                                "",              "" },
-    //{ SSC_OUTPUT,    SSC_ARRAY,  "m_dot_tes_dc",                       "TES discharge mass flow rate",                                                                                                          "kg/s",         "",                                  "",                                         "*",                                                                "",              "" },
-    //{ SSC_OUTPUT,    SSC_ARRAY,  "m_dot_tes_ch",                       "TES charge mass flow rate",                                                                                                             "kg/s",         "",                                  "",                                         "*",                                                                "",              "" },
-
 
         // Parasitics outputs
     { SSC_OUTPUT,    SSC_ARRAY,  "pparasi",                            "Parasitic power heliostat drives",                                                                                                        "MWe",          "",                                  "",                                         "*",                                                                "",              ""},
@@ -2018,22 +2015,31 @@ public:
         std::unique_ptr<C_nuclear> nuclear_plant = std::unique_ptr<C_nuclear>(new C_nuclear());
         nuclear_plant->m_is_nuclear_only = as_boolean("is_nuclear_only");
         
+        std::unique_ptr<C_pt_receiver> heat_input;
         if (nuclear_plant->m_is_nuclear_only)
         {
-           nuclear_plant->m_T_htf_hot_des = as_double("T_htf_hot_des");             //[C]
-           nuclear_plant->m_T_htf_cold_des = as_double("T_htf_cold_des");           //[C] 
-           nuclear_plant->m_A_sf = as_double("A_sf");  
-           nuclear_plant->m_q_rec_des = as_double("q_dot_nuclear_des");
+            nuclear_plant->m_T_htf_hot_des = as_double("T_htf_hot_des");             //[C]
+            nuclear_plant->m_T_htf_cold_des = as_double("T_htf_cold_des");           //[C] 
+            nuclear_plant->m_A_sf = as_double("A_sf");  
+            nuclear_plant->m_q_rec_des = as_double("q_dot_nuclear_des");
+           
+            heat_input = std::move(nuclear_plant);
         }
+        else
+            heat_input = std::move(receiver);
 
 
         // Could add optional ISCC stuff...
 
         // Test mspt_receiver initialization
         //receiver.init();
+        
 
         // Now try to instantiate mspt_collector_receiver
-        C_csp_heating_plant_designator collector_receiver(heliostatfield, *receiver, *nuclear_plant);
+        
+        
+        C_csp_heating_plant_designator collector_receiver(heliostatfield, *heat_input);
+        
         // Then try init() call here, which should call inits from both classes
         //collector_receiver.init();
 
