@@ -25,9 +25,8 @@ OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "csp_solver_core.h"
 #include "csp_solver_pt_sf_perf_interp.h"
-#include "csp_solver_pt_receiver.h"
 #include "csp_solver_nuclear.h"
-
+#include "csp_solver_pt_receiver.h"
 
 
 class C_csp_heating_plant_designator : public C_csp_collector_receiver
@@ -35,11 +34,10 @@ class C_csp_heating_plant_designator : public C_csp_collector_receiver
 
 private:
 	C_pt_sf_perf_interp &mc_pt_heliostatfield;
-	C_pt_receiver &mc_pt_receiver;
-    C_nuclear &mc_nuclear;
+	C_pt_receiver &mc_heat_input;
 
 public:
-	
+
 	enum
 	{
 		E_FIELD_Q_DOT_INC,		//[MWt] Field incident thermal power
@@ -79,7 +77,7 @@ public:
     C_csp_reported_outputs mc_reported_outputs;
 	
 	C_csp_heating_plant_designator(C_pt_sf_perf_interp & pt_heliostatfield,
-		C_pt_receiver & pt_receiver, C_nuclear & nuclear);
+		C_pt_receiver & mc_heat_input);
 
 	~C_csp_heating_plant_designator();
 

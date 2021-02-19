@@ -61,16 +61,13 @@ static C_csp_reported_outputs::S_output_info S_output_info[] =
 	csp_info_invalid	
 };
 
-C_csp_heating_plant_designator::C_csp_heating_plant_designator(C_pt_sf_perf_interp & pt_heliostatfield,
-	C_pt_receiver & pt_receiver, C_nuclear & nuclear):
+C_csp_heating_plant_designator::C_csp_heating_plant_designator(C_pt_sf_perf_interp &pt_heliostatfield,
+	C_pt_receiver &pt_receiver):
 	mc_pt_heliostatfield(pt_heliostatfield),
-	mc_pt_receiver(pt_receiver), 
-    mc_nuclear(nuclear)
+    mc_heat_input(pt_receiver)
 {
 	mc_reported_outputs.construct(S_output_info);
-    
-    //determining if we're using a nuclear plant instead of receiver+heliostatfield
-    if (nuclear.m_is_nuclear_only)
+    if (mc_heat_input.m_is_nuclear_only)
         m_use_nuclear = true;
 }
 
@@ -80,52 +77,38 @@ C_csp_heating_plant_designator::~C_csp_heating_plant_designator()
 void C_csp_heating_plant_designator::init(const C_csp_collector_receiver::S_csp_cr_init_inputs init_inputs, 
 				C_csp_collector_receiver::S_csp_cr_solved_params & solved_params)
 {
-	if (!m_use_nuclear)
-    {//continuing with CSP as normal
-        mc_pt_heliostatfield.init();
-        mc_pt_receiver.init();
-
-        solved_params.m_T_htf_cold_des = mc_pt_receiver.m_T_htf_cold_des;       //[K]
-        solved_params.m_T_htf_hot_des = mc_pt_receiver.m_T_htf_hot_des;         //[K]
-        solved_params.m_q_dot_rec_des = mc_pt_receiver.m_q_rec_des / 1.E6;		//[MW]
-        solved_params.m_A_aper_total = mc_pt_heliostatfield.ms_params.m_A_sf;	//[m^2]
-    }
-    else
-    {//continuing with nuclear only
-        mc_nuclear.init(); // need better init, for now only converts T's and q's units
-        
-        solved_params.m_T_htf_cold_des = mc_nuclear.m_T_htf_cold_des;       //[K]
-        solved_params.m_T_htf_hot_des = mc_nuclear.m_T_htf_hot_des;         //[K]
-        solved_params.m_q_dot_rec_des = mc_nuclear.m_q_rec_des / 1.E6;		//[MW]
-        solved_params.m_A_aper_total = mc_nuclear.m_A_sf;	//[m^2]
-    }
-
+	mc_pt_heliostatfield.init();
+    mc_heat_input.init();
+    solved_params.m_A_aper_total = mc_pt_heliostatfield.ms_params.m_A_sf;	//[m^2]
+    solved_params.m_T_htf_cold_des = mc_heat_input.m_T_htf_cold_des;       //[K]
+    solved_params.m_T_htf_hot_des = mc_heat_input.m_T_htf_hot_des;         //[K]
+    solved_params.m_q_dot_rec_des = mc_heat_input.m_q_rec_des / 1.E6;		//[MW]
 	return;
 }
 
 int C_csp_heating_plant_designator::get_operating_state()
 {
-	return mc_pt_receiver.get_operating_state();
+	return mc_heat_input.get_operating_state();
 }
 
 double C_csp_heating_plant_designator::get_startup_time()
 {
-    return mc_pt_receiver.get_startup_time();   //[s]
+    return mc_heat_input.get_startup_time();   //[s]
 }
 
 double C_csp_heating_plant_designator::get_startup_energy()
 {
-    return mc_pt_receiver.get_startup_energy(); //[MWh]
+    return mc_heat_input.get_startup_energy(); //[MWh]
 }
 
 double C_csp_heating_plant_designator::get_pumping_parasitic_coef()  //MWe/MWt
 {
-    return mc_pt_receiver.get_pumping_parasitic_coef();
+    return mc_heat_input.get_pumping_parasitic_coef();
 }
 
 double C_csp_heating_plant_designator::get_min_power_delivery()    //MWt
 {
-    return mc_pt_receiver.m_f_rec_min * mc_pt_receiver.m_q_rec_des*1.e-6;
+    return mc_heat_input.m_f_rec_min * mc_heat_input.m_q_rec_des*1.e-6;
 }
 
 
@@ -142,7 +125,7 @@ double C_csp_heating_plant_designator::get_col_startup_power()
 double C_csp_heating_plant_designator::get_remaining_startup_energy()
 {
 	//return mc_mspt_receiver_222.get_remaining_startup_energy()/1000.;  //kWjt
-    return mc_pt_receiver.get_remaining_startup_energy()/1000.;  //kWjt
+    return mc_heat_input.get_remaining_startup_energy()/1000.;  //kWjt
 }
 
 
@@ -167,60 +150,60 @@ void C_csp_heating_plant_designator::call(const C_csp_weatherreader::S_outputs &
 	receiver_inputs.m_field_eff = mc_pt_heliostatfield.ms_outputs.m_eta_field;
 	receiver_inputs.m_input_operation_mode = inputs.m_input_operation_mode;
 	receiver_inputs.m_flux_map_input = &mc_pt_heliostatfield.ms_outputs.m_flux_map_out;
-	mc_pt_receiver.call(weather, htf_state_in, receiver_inputs, sim_info);
+	mc_heat_input.call(weather, htf_state_in, receiver_inputs, sim_info);
 		
 	// Set collector/receiver parent class outputs and return
 	//cr_out_report.m_eta_field = mc_pt_heliostatfield.ms_outputs.m_eta_field;				//[-]
     //cr_out_report.m_sf_adjust_out = mc_pt_heliostatfield.ms_outputs.m_sf_adjust_out;
 	//cr_out_report.m_q_dot_field_inc = mc_pt_heliostatfield.ms_outputs.m_q_dot_field_inc;	//[MWt]
 
-	//cr_out_report.m_q_dot_rec_inc = mc_pt_receiver.ms_outputs.m_q_dot_rec_inc;		//[MWt]
-	//cr_out_report.m_eta_thermal = mc_pt_receiver.ms_outputs.m_eta_therm;				//[-]
-	cr_out_solver.m_q_thermal = mc_pt_receiver.ms_outputs.m_Q_thermal;				//[MW]
-	cr_out_solver.m_q_startup = mc_pt_receiver.ms_outputs.m_q_startup;				//[MWt-hr]
-	//cr_out_report.m_q_dot_piping_loss = mc_pt_receiver.ms_outputs.m_q_dot_piping_loss;	//[MWt]
-	cr_out_solver.m_m_dot_salt_tot = mc_pt_receiver.ms_outputs.m_m_dot_salt_tot;		//[kg/hr]
-	cr_out_solver.m_T_salt_hot = mc_pt_receiver.ms_outputs.m_T_salt_hot;				//[C]
+	//cr_out_report.m_q_dot_rec_inc = mc_heat_input.ms_outputs.m_q_dot_rec_inc;		//[MWt]
+	//cr_out_report.m_eta_thermal = mc_heat_input.ms_outputs.m_eta_therm;				//[-]
+	cr_out_solver.m_q_thermal = mc_heat_input.ms_outputs.m_Q_thermal;				//[MW]
+	cr_out_solver.m_q_startup = mc_heat_input.ms_outputs.m_q_startup;				//[MWt-hr]
+	//cr_out_report.m_q_dot_piping_loss = mc_heat_input.ms_outputs.m_q_dot_piping_loss;	//[MWt]
+	cr_out_solver.m_m_dot_salt_tot = mc_heat_input.ms_outputs.m_m_dot_salt_tot;		//[kg/hr]
+	cr_out_solver.m_T_salt_hot = mc_heat_input.ms_outputs.m_T_salt_hot;				//[C]
 	
-	cr_out_solver.m_component_defocus = mc_pt_receiver.ms_outputs.m_component_defocus;	//[-]
+	cr_out_solver.m_component_defocus = mc_heat_input.ms_outputs.m_component_defocus;	//[-]
 	
-	cr_out_solver.m_W_dot_htf_pump = mc_pt_receiver.ms_outputs.m_W_dot_pump;			//[MWe]
+	cr_out_solver.m_W_dot_htf_pump = mc_heat_input.ms_outputs.m_W_dot_pump;			//[MWe]
 	cr_out_solver.m_W_dot_col_tracking = mc_pt_heliostatfield.ms_outputs.m_pparasi;		//[MWe]
 
-	cr_out_solver.m_time_required_su = mc_pt_receiver.ms_outputs.m_time_required_su;	//[s]
-	cr_out_solver.m_q_rec_heattrace = mc_pt_receiver.ms_outputs.m_q_heattrace / (mc_pt_receiver.ms_outputs.m_time_required_su / 3600.0);		//[MWt])
+	cr_out_solver.m_time_required_su = mc_heat_input.ms_outputs.m_time_required_su;	//[s]
+	cr_out_solver.m_q_rec_heattrace = mc_heat_input.ms_outputs.m_q_heattrace / (mc_heat_input.ms_outputs.m_time_required_su / 3600.0);		//[MWt])
 
 
 	mc_reported_outputs.value(E_FIELD_Q_DOT_INC, mc_pt_heliostatfield.ms_outputs.m_q_dot_field_inc);	//[MWt]
 	mc_reported_outputs.value(E_FIELD_ETA_OPT, mc_pt_heliostatfield.ms_outputs.m_eta_field);			//[-]
 	mc_reported_outputs.value(E_FIELD_ADJUST, mc_pt_heliostatfield.ms_outputs.m_sf_adjust_out);			//[-]
 
-	mc_reported_outputs.value(E_Q_DOT_INC, mc_pt_receiver.ms_outputs.m_q_dot_rec_inc);	//[MWt]
-	mc_reported_outputs.value(E_ETA_THERMAL, mc_pt_receiver.ms_outputs.m_eta_therm);		//[-]
-	mc_reported_outputs.value(E_Q_DOT_THERMAL, mc_pt_receiver.ms_outputs.m_Q_thermal);	//[MWt]
-	mc_reported_outputs.value(E_M_DOT_HTF, mc_pt_receiver.ms_outputs.m_m_dot_salt_tot);	//[kg/hr]
+	mc_reported_outputs.value(E_Q_DOT_INC, mc_heat_input.ms_outputs.m_q_dot_rec_inc);	//[MWt]
+	mc_reported_outputs.value(E_ETA_THERMAL, mc_heat_input.ms_outputs.m_eta_therm);		//[-]
+	mc_reported_outputs.value(E_Q_DOT_THERMAL, mc_heat_input.ms_outputs.m_Q_thermal);	//[MWt]
+	mc_reported_outputs.value(E_M_DOT_HTF, mc_heat_input.ms_outputs.m_m_dot_salt_tot);	//[kg/hr]
 		// If startup, then timestep may have changed (why not report this from 222 in MWt?)
-	mc_reported_outputs.value(E_Q_DOT_STARTUP, mc_pt_receiver.ms_outputs.m_q_startup / (mc_pt_receiver.ms_outputs.m_time_required_su / 3600.0));		//[MWt])
+	mc_reported_outputs.value(E_Q_DOT_STARTUP, mc_heat_input.ms_outputs.m_q_startup / (mc_heat_input.ms_outputs.m_time_required_su / 3600.0));		//[MWt])
 	mc_reported_outputs.value(E_T_HTF_IN, htf_state_in.m_temp);									//[C]
-	mc_reported_outputs.value(E_T_HTF_OUT, mc_pt_receiver.ms_outputs.m_T_salt_hot);		//[C]
-    mc_reported_outputs.value(E_T_HTF_OUT_REC, mc_pt_receiver.ms_outputs.m_T_salt_hot_rec);		//[C]
-	mc_reported_outputs.value(E_Q_DOT_PIPE_LOSS, mc_pt_receiver.ms_outputs.m_q_dot_piping_loss);	//[MWt]
-    mc_reported_outputs.value(E_Q_DOT_LOSS, mc_pt_receiver.ms_outputs.m_q_rad_sum + mc_pt_receiver.ms_outputs.m_q_conv_sum ); //MWt
+	mc_reported_outputs.value(E_T_HTF_OUT, mc_heat_input.ms_outputs.m_T_salt_hot);		//[C]
+    mc_reported_outputs.value(E_T_HTF_OUT_REC, mc_heat_input.ms_outputs.m_T_salt_hot_rec);		//[C]
+	mc_reported_outputs.value(E_Q_DOT_PIPE_LOSS, mc_heat_input.ms_outputs.m_q_dot_piping_loss);	//[MWt]
+    mc_reported_outputs.value(E_Q_DOT_LOSS, mc_heat_input.ms_outputs.m_q_rad_sum + mc_heat_input.ms_outputs.m_q_conv_sum ); //MWt
     // from transient model:
-	mc_reported_outputs.value(E_P_HEATTRACE, mc_pt_receiver.ms_outputs.m_q_heattrace / (mc_pt_receiver.ms_outputs.m_time_required_su / 3600.0));		//[MWt])
-	mc_reported_outputs.value(E_T_HTF_OUT_END, mc_pt_receiver.ms_outputs.m_inst_T_salt_hot);	//[C]
-    mc_reported_outputs.value(E_T_HTF_OUT_END_REC, mc_pt_receiver.ms_outputs.m_inst_T_salt_hot_rec);		//[C]
-	mc_reported_outputs.value(E_T_HTF_OUT_MAX, mc_pt_receiver.ms_outputs.m_max_T_salt_hot);	//[C]
-	mc_reported_outputs.value(E_T_HTF_PANEL_OUT_MAX, mc_pt_receiver.ms_outputs.m_max_rec_tout);	//[C]
+	mc_reported_outputs.value(E_P_HEATTRACE, mc_heat_input.ms_outputs.m_q_heattrace / (mc_heat_input.ms_outputs.m_time_required_su / 3600.0));		//[MWt])
+	mc_reported_outputs.value(E_T_HTF_OUT_END, mc_heat_input.ms_outputs.m_inst_T_salt_hot);	//[C]
+    mc_reported_outputs.value(E_T_HTF_OUT_END_REC, mc_heat_input.ms_outputs.m_inst_T_salt_hot_rec);		//[C]
+	mc_reported_outputs.value(E_T_HTF_OUT_MAX, mc_heat_input.ms_outputs.m_max_T_salt_hot);	//[C]
+	mc_reported_outputs.value(E_T_HTF_PANEL_OUT_MAX, mc_heat_input.ms_outputs.m_max_rec_tout);	//[C]
 	
-	mc_reported_outputs.value(E_T_WALL_INLET, mc_pt_receiver.ms_outputs.m_Twall_inlet);	//[C]
-	mc_reported_outputs.value(E_T_WALL_OUTLET, mc_pt_receiver.ms_outputs.m_Twall_outlet);	//[C]
-	mc_reported_outputs.value(E_T_RISER, mc_pt_receiver.ms_outputs.m_Triser);	//[C]
-	mc_reported_outputs.value(E_T_DOWNC, mc_pt_receiver.ms_outputs.m_Tdownc);	//[C]
+	mc_reported_outputs.value(E_T_WALL_INLET, mc_heat_input.ms_outputs.m_Twall_inlet);	//[C]
+	mc_reported_outputs.value(E_T_WALL_OUTLET, mc_heat_input.ms_outputs.m_Twall_outlet);	//[C]
+	mc_reported_outputs.value(E_T_RISER, mc_heat_input.ms_outputs.m_Triser);	//[C]
+	mc_reported_outputs.value(E_T_DOWNC, mc_heat_input.ms_outputs.m_Tdownc);	//[C]
 
-	mc_reported_outputs.value(E_CLEARSKY, mc_pt_receiver.ms_outputs.m_clearsky);
-	mc_reported_outputs.value(E_Q_DOT_THERMAL_CSKY_SS, mc_pt_receiver.ms_outputs.m_Q_thermal_csky_ss); //[MWt]
-	mc_reported_outputs.value(E_Q_DOT_THERMAL_SS, mc_pt_receiver.ms_outputs.m_Q_thermal_ss); //[MWt]
+	mc_reported_outputs.value(E_CLEARSKY, mc_heat_input.ms_outputs.m_clearsky);
+	mc_reported_outputs.value(E_Q_DOT_THERMAL_CSKY_SS, mc_heat_input.ms_outputs.m_Q_thermal_csky_ss); //[MWt]
+	mc_reported_outputs.value(E_Q_DOT_THERMAL_SS, mc_heat_input.ms_outputs.m_Q_thermal_ss); //[MWt]
 }
 
 void C_csp_heating_plant_designator::off(const C_csp_weatherreader::S_outputs &weather,
@@ -240,52 +223,52 @@ void C_csp_heating_plant_designator::off(const C_csp_weatherreader::S_outputs &w
 	cr_out_solver.m_W_dot_col_tracking = mc_pt_heliostatfield.ms_outputs.m_pparasi;			//[MWe]
 
 	// Now, call the tower-receiver model
-	mc_pt_receiver.off(weather, htf_state_in, sim_info);
+	mc_heat_input.off(weather, htf_state_in, sim_info);
 
 	// Set collector/receiver parent class outputs from field model
-	//cr_out_report.m_q_dot_rec_inc = mc_pt_receiver.ms_outputs.m_q_dot_rec_inc;		 //[MWt]
-	//cr_out_report.m_eta_thermal = mc_pt_receiver.ms_outputs.m_eta_therm;				 //[-]
-	cr_out_solver.m_q_thermal = mc_pt_receiver.ms_outputs.m_Q_thermal;				 //[MW]
-	cr_out_solver.m_q_startup = mc_pt_receiver.ms_outputs.m_q_startup;				 //[MWt-hr]
-	//cr_out_report.m_q_dot_piping_loss = mc_pt_receiver.ms_outputs.m_q_dot_piping_loss; //[MWt]
-	cr_out_solver.m_m_dot_salt_tot = mc_pt_receiver.ms_outputs.m_m_dot_salt_tot;		 //[kg/hr]
-	cr_out_solver.m_T_salt_hot = mc_pt_receiver.ms_outputs.m_T_salt_hot;				 //[C]
+	//cr_out_report.m_q_dot_rec_inc = mc_heat_input.ms_outputs.m_q_dot_rec_inc;		 //[MWt]
+	//cr_out_report.m_eta_thermal = mc_heat_input.ms_outputs.m_eta_therm;				 //[-]
+	cr_out_solver.m_q_thermal = mc_heat_input.ms_outputs.m_Q_thermal;				 //[MW]
+	cr_out_solver.m_q_startup = mc_heat_input.ms_outputs.m_q_startup;				 //[MWt-hr]
+	//cr_out_report.m_q_dot_piping_loss = mc_heat_input.ms_outputs.m_q_dot_piping_loss; //[MWt]
+	cr_out_solver.m_m_dot_salt_tot = mc_heat_input.ms_outputs.m_m_dot_salt_tot;		 //[kg/hr]
+	cr_out_solver.m_T_salt_hot = mc_heat_input.ms_outputs.m_T_salt_hot;				 //[C]
 	cr_out_solver.m_component_defocus = 1.0;	//[-]
-	cr_out_solver.m_W_dot_htf_pump = mc_pt_receiver.ms_outputs.m_W_dot_pump;			 //[MWe]
+	cr_out_solver.m_W_dot_htf_pump = mc_heat_input.ms_outputs.m_W_dot_pump;			 //[MWe]
 		// Not sure that we want 'startup time required' calculated in 'off' call
-	cr_out_solver.m_time_required_su = mc_pt_receiver.ms_outputs.m_time_required_su;	 //[s]
-	cr_out_solver.m_q_rec_heattrace = mc_pt_receiver.ms_outputs.m_q_heattrace / (mc_pt_receiver.ms_outputs.m_time_required_su / 3600.0);		//[MWt])
+	cr_out_solver.m_time_required_su = mc_heat_input.ms_outputs.m_time_required_su;	 //[s]
+	cr_out_solver.m_q_rec_heattrace = mc_heat_input.ms_outputs.m_q_heattrace / (mc_heat_input.ms_outputs.m_time_required_su / 3600.0);		//[MWt])
 
 	mc_reported_outputs.value(E_FIELD_Q_DOT_INC, mc_pt_heliostatfield.ms_outputs.m_q_dot_field_inc);	//[MWt]
 	mc_reported_outputs.value(E_FIELD_ETA_OPT, mc_pt_heliostatfield.ms_outputs.m_eta_field);			//[-]
 	mc_reported_outputs.value(E_FIELD_ADJUST, mc_pt_heliostatfield.ms_outputs.m_sf_adjust_out);			//[-]
 
-	mc_reported_outputs.value(E_Q_DOT_INC, mc_pt_receiver.ms_outputs.m_q_dot_rec_inc);	//[MWt]
-	mc_reported_outputs.value(E_ETA_THERMAL, mc_pt_receiver.ms_outputs.m_eta_therm);		//[-]
-	mc_reported_outputs.value(E_Q_DOT_THERMAL, mc_pt_receiver.ms_outputs.m_Q_thermal);	//[MWt]
-	mc_reported_outputs.value(E_M_DOT_HTF, mc_pt_receiver.ms_outputs.m_m_dot_salt_tot);	//[kg/hr]
+	mc_reported_outputs.value(E_Q_DOT_INC, mc_heat_input.ms_outputs.m_q_dot_rec_inc);	//[MWt]
+	mc_reported_outputs.value(E_ETA_THERMAL, mc_heat_input.ms_outputs.m_eta_therm);		//[-]
+	mc_reported_outputs.value(E_Q_DOT_THERMAL, mc_heat_input.ms_outputs.m_Q_thermal);	//[MWt]
+	mc_reported_outputs.value(E_M_DOT_HTF, mc_heat_input.ms_outputs.m_m_dot_salt_tot);	//[kg/hr]
 		// Should not be startup energy in OFF, but timestep may be subhourly/nonuniform (why not report this from 222 in MWt?)
-	mc_reported_outputs.value(E_Q_DOT_STARTUP, mc_pt_receiver.ms_outputs.m_q_startup / (mc_pt_receiver.ms_outputs.m_time_required_su / 3600.0));		//[MWt])
+	mc_reported_outputs.value(E_Q_DOT_STARTUP, mc_heat_input.ms_outputs.m_q_startup / (mc_heat_input.ms_outputs.m_time_required_su / 3600.0));		//[MWt])
 	mc_reported_outputs.value(E_T_HTF_IN, htf_state_in.m_temp);									//[C]
-	mc_reported_outputs.value(E_T_HTF_OUT, mc_pt_receiver.ms_outputs.m_T_salt_hot);		//[C]
-    mc_reported_outputs.value(E_T_HTF_OUT_REC, mc_pt_receiver.ms_outputs.m_T_salt_hot_rec);		//[C]
-	mc_reported_outputs.value(E_Q_DOT_PIPE_LOSS, mc_pt_receiver.ms_outputs.m_q_dot_piping_loss);	//[MWt]
-    mc_reported_outputs.value(E_Q_DOT_LOSS, mc_pt_receiver.ms_outputs.m_q_rad_sum + mc_pt_receiver.ms_outputs.m_q_conv_sum ); //MWt
+	mc_reported_outputs.value(E_T_HTF_OUT, mc_heat_input.ms_outputs.m_T_salt_hot);		//[C]
+    mc_reported_outputs.value(E_T_HTF_OUT_REC, mc_heat_input.ms_outputs.m_T_salt_hot_rec);		//[C]
+	mc_reported_outputs.value(E_Q_DOT_PIPE_LOSS, mc_heat_input.ms_outputs.m_q_dot_piping_loss);	//[MWt]
+    mc_reported_outputs.value(E_Q_DOT_LOSS, mc_heat_input.ms_outputs.m_q_rad_sum + mc_heat_input.ms_outputs.m_q_conv_sum ); //MWt
     // from transient model:
-	mc_reported_outputs.value(E_P_HEATTRACE, mc_pt_receiver.ms_outputs.m_q_heattrace / (mc_pt_receiver.ms_outputs.m_time_required_su / 3600.0));		//[MWt])
-	mc_reported_outputs.value(E_T_HTF_OUT_END, mc_pt_receiver.ms_outputs.m_inst_T_salt_hot);	//[C]
-    mc_reported_outputs.value(E_T_HTF_OUT_END_REC, mc_pt_receiver.ms_outputs.m_inst_T_salt_hot_rec);		//[C]
-	mc_reported_outputs.value(E_T_HTF_OUT_MAX, mc_pt_receiver.ms_outputs.m_max_T_salt_hot);	//[C]
-	mc_reported_outputs.value(E_T_HTF_PANEL_OUT_MAX, mc_pt_receiver.ms_outputs.m_max_rec_tout);	//[C]
+	mc_reported_outputs.value(E_P_HEATTRACE, mc_heat_input.ms_outputs.m_q_heattrace / (mc_heat_input.ms_outputs.m_time_required_su / 3600.0));		//[MWt])
+	mc_reported_outputs.value(E_T_HTF_OUT_END, mc_heat_input.ms_outputs.m_inst_T_salt_hot);	//[C]
+    mc_reported_outputs.value(E_T_HTF_OUT_END_REC, mc_heat_input.ms_outputs.m_inst_T_salt_hot_rec);		//[C]
+	mc_reported_outputs.value(E_T_HTF_OUT_MAX, mc_heat_input.ms_outputs.m_max_T_salt_hot);	//[C]
+	mc_reported_outputs.value(E_T_HTF_PANEL_OUT_MAX, mc_heat_input.ms_outputs.m_max_rec_tout);	//[C]
 
-	mc_reported_outputs.value(E_T_WALL_INLET, mc_pt_receiver.ms_outputs.m_Twall_inlet);	//[C]
-	mc_reported_outputs.value(E_T_WALL_OUTLET, mc_pt_receiver.ms_outputs.m_Twall_outlet);	//[C]
-	mc_reported_outputs.value(E_T_RISER, mc_pt_receiver.ms_outputs.m_Triser);	//[C]
-	mc_reported_outputs.value(E_T_DOWNC, mc_pt_receiver.ms_outputs.m_Tdownc);	//[C]
+	mc_reported_outputs.value(E_T_WALL_INLET, mc_heat_input.ms_outputs.m_Twall_inlet);	//[C]
+	mc_reported_outputs.value(E_T_WALL_OUTLET, mc_heat_input.ms_outputs.m_Twall_outlet);	//[C]
+	mc_reported_outputs.value(E_T_RISER, mc_heat_input.ms_outputs.m_Triser);	//[C]
+	mc_reported_outputs.value(E_T_DOWNC, mc_heat_input.ms_outputs.m_Tdownc);	//[C]
 
-	mc_reported_outputs.value(E_CLEARSKY, mc_pt_receiver.ms_outputs.m_clearsky);
-	mc_reported_outputs.value(E_Q_DOT_THERMAL_CSKY_SS, mc_pt_receiver.ms_outputs.m_Q_thermal_csky_ss); //[MWt]
-	mc_reported_outputs.value(E_Q_DOT_THERMAL_SS, mc_pt_receiver.ms_outputs.m_Q_thermal_ss); //[MWt]
+	mc_reported_outputs.value(E_CLEARSKY, mc_heat_input.ms_outputs.m_clearsky);
+	mc_reported_outputs.value(E_Q_DOT_THERMAL_CSKY_SS, mc_heat_input.ms_outputs.m_Q_thermal_csky_ss); //[MWt]
+	mc_reported_outputs.value(E_Q_DOT_THERMAL_SS, mc_heat_input.ms_outputs.m_Q_thermal_ss); //[MWt]
 
 	return;
 }
@@ -376,7 +359,7 @@ double C_csp_heating_plant_designator::get_collector_area()
 
     //return p->m_dens_mirror * p->m_helio_height * p->m_helio_width * (double)p->m_helio_positions.nrows();
 
-    //return mc_pt_receiver.m_A_sf;
+    //return mc_heat_input.m_A_sf;
     return mc_pt_heliostatfield.ms_params.m_A_sf;
 }
 
@@ -386,7 +369,7 @@ double C_csp_heating_plant_designator::calculate_thermal_efficiency_approx( cons
     A very approximate thermal efficiency used for quick optimization performance projections
     */
 
-    double T_eff = (mc_pt_receiver.m_T_htf_cold_des + mc_pt_receiver.m_T_htf_hot_des)*.55;
+    double T_eff = (mc_heat_input.m_T_htf_cold_des + mc_heat_input.m_T_htf_hot_des)*.55;
 
     double T_amb = weather.m_tdry + 273.15;
     double T_eff4 = T_eff * T_eff;
@@ -394,9 +377,9 @@ double C_csp_heating_plant_designator::calculate_thermal_efficiency_approx( cons
     double T_amb4 = T_amb * T_amb;
     T_amb4 *= T_amb4;
 
-    double Arec = mc_pt_receiver.area_proj();
+    double Arec = mc_heat_input.area_proj();
 
-    double q_rad = 5.67e-8*mc_pt_receiver.m_epsilon * Arec * (T_eff4 - T_amb4) * 1.e-6;   //MWt
+    double q_rad = 5.67e-8*mc_heat_input.m_epsilon * Arec * (T_eff4 - T_amb4) * 1.e-6;   //MWt
 
     double v = weather.m_wspd;
     double v2 = v*v;
@@ -412,7 +395,7 @@ double C_csp_heating_plant_designator::calculate_thermal_efficiency_approx( cons
 void C_csp_heating_plant_designator::converged()
 {
 	mc_pt_heliostatfield.converged();
-	mc_pt_receiver.converged();
+	mc_heat_input.converged();
 
     // Set reported heliostat converged value
     bool is_field_tracking_final;
@@ -423,14 +406,14 @@ void C_csp_heating_plant_designator::converged()
     C_csp_collector_receiver::E_csp_cr_modes rec_op_mode_final;
     double rec_startup_time_remain_final, rec_startup_energy_remain_final;
     rec_startup_time_remain_final = rec_startup_energy_remain_final = std::numeric_limits<double>::quiet_NaN();
-    mc_pt_receiver.get_converged_values(rec_op_mode_final,
+    mc_heat_input.get_converged_values(rec_op_mode_final,
         rec_startup_energy_remain_final, rec_startup_time_remain_final);
     mc_reported_outputs.value(E_REC_OP_MODE_FINAL, (int)rec_op_mode_final);
     mc_reported_outputs.value(E_REC_STARTUP_TIME_REMAIN_FINAL, rec_startup_time_remain_final);
     mc_reported_outputs.value(E_REC_STARTUP_ENERGY_REMAIN_FINAL, rec_startup_energy_remain_final);
 
 	// Hardcode to test...
-	//mc_reported_outputs.set_timestep_output(E_Q_DOT_THERMAL, mc_pt_receiver.ms_outputs.m_Q_thermal);	//[MWt]
+	//mc_reported_outputs.set_timestep_output(E_Q_DOT_THERMAL, mc_heat_input.ms_outputs.m_Q_thermal);	//[MWt]
 	mc_reported_outputs.set_timestep_outputs();
 }
 
