@@ -47,8 +47,11 @@ public:
     double m_T_htf_hot_des;			    //[C] hot outlet HTF temperature at design, converted to [K] in init()
     double m_T_htf_cold_des;		    //[C] cold inlet HTF temperature at design, converted to [K] in init()
     double m_f_rec_min;				    //[-] minimum receiver thermal output as fraction of design
-    double q_dot_nuclear_des;		    //[MW] design nuclear thermal output, converted to [W] in init()
+    double m_q_dot_nuclear_des;		    //[MW] design nuclear thermal output, converted to [W] in init()
     double m_A_sf;                      //[m2] "solar field" area, should delete this later
+    
+    double m_nuclear_su_delay;      //[hr] required startup time
+    double m_nuclear_qf_delay;      //[-] required startup energy as fraction of design thermal output
     
 
 	C_csp_collector_receiver::E_csp_cr_modes m_mode_initial;
@@ -83,6 +86,10 @@ public:
     virtual double get_pumping_parasitic_coef();
 
     virtual double area_proj();
+    
+    virtual double get_startup_time();
+    
+    virtual double get_startup_energy();
 
 };
 

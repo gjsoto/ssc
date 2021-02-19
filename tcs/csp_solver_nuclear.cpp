@@ -29,13 +29,30 @@ OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 C_nuclear::C_nuclear()
 {
     m_is_nuclear_only = false;
+    m_mode_initial = C_csp_collector_receiver::E_csp_cr_modes::ON;
+    m_mode = C_csp_collector_receiver::E_csp_cr_modes::ON;
+    m_mode_prev = C_csp_collector_receiver::E_csp_cr_modes::ON;
+    
+    m_q_dot_nuclear_des = std::numeric_limits<double>::quiet_NaN();
+    m_nuclear_su_delay = std::numeric_limits<double>::quiet_NaN();
+    m_nuclear_qf_delay = std::numeric_limits<double>::quiet_NaN();
 }
 
 void C_nuclear::init()
 {
 	m_T_htf_hot_des += 273.15;	//[K] Convert from input in [C]
 	m_T_htf_cold_des += 273.15;	//[K] Convert from input in [C]
-	q_dot_nuclear_des *= 1.E6;	//[W] Convert from input in [MW]    
+	m_q_dot_nuclear_des *= 1.E6;	//[W] Convert from input in [MW]    
+}
+
+double C_nuclear::get_startup_time()
+{
+    return m_nuclear_su_delay * 3600.; // sec
+}
+
+double C_nuclear::get_startup_energy()
+{
+    return m_nuclear_qf_delay * m_q_dot_nuclear_des * 1.e-6;  // MWh
 }
 
 void C_nuclear::call(const C_csp_weatherreader::S_outputs &weather, 
@@ -76,5 +93,5 @@ double C_nuclear::get_pumping_parasitic_coef()
 
 double C_nuclear::area_proj()
 {
-    return CSP::pi * m_d_rec * m_h_rec; //[m^2] projected or aperture area of the receiver
+    return m_A_sf; //[m^2] projected or aperture area of the receiver
 }
