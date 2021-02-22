@@ -44,10 +44,6 @@ public:
 	double m_d_rec;					//[m]
 	double m_h_rec;					//[m]
 
-    double m_T_htf_hot_des;			    //[C] hot outlet HTF temperature at design, converted to [K] in init()
-    double m_T_htf_cold_des;		    //[C] cold inlet HTF temperature at design, converted to [K] in init()
-    double m_f_rec_min;				    //[-] minimum receiver thermal output as fraction of design
-    double m_q_dot_nuclear_des;		    //[MW] design nuclear thermal output, converted to [W] in init()
     double m_A_sf;                      //[m2] "solar field" area, should delete this later
     
     double m_nuclear_su_delay;      //[hr] required startup time
@@ -67,6 +63,8 @@ public:
 	~C_nuclear(){};
 
 	virtual void init();
+    
+    virtual int get_operating_state();
 
 	virtual void call(const C_csp_weatherreader::S_outputs &weather, 
 		const C_csp_solver_htf_1state &htf_state_in, 

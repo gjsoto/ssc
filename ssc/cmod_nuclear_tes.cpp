@@ -2021,7 +2021,7 @@ public:
             nuclear_plant->m_T_htf_hot_des = as_double("T_htf_hot_des");             //[C]
             nuclear_plant->m_T_htf_cold_des = as_double("T_htf_cold_des");           //[C] 
             nuclear_plant->m_A_sf = as_double("A_sf");  
-            nuclear_plant->m_q_dot_nuclear_des = as_double("q_dot_nuclear_des");
+            nuclear_plant->m_q_rec_des = as_double("q_dot_nuclear_des");
            
             heat_input = std::move(nuclear_plant);
         }
