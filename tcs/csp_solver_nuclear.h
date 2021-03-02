@@ -93,19 +93,19 @@ public:
 		double eta_therm;			// Receiver thermal efficiency (energy to HTF not including piping loss / Absorbed solar energy)
         double delta_T_piping;      // Temperature change from thermal loss in piping (K)
 
-        std::vector<double> T_salt_hot_rec_path;      // Receiver flow path outlet T before piping loss (K)
-        std::vector<double> Q_abs_path; // Total energy transferred to HTF per path, not including piping loss (W)
+        double T_salt_hot_rec_path;      // Receiver flow path outlet T before piping loss (K)
+        double Q_abs_path; // Total energy transferred to HTF per path, not including piping loss (W)
 
-		util::matrix_t<double> T_s;			// Average external tube T (K)
-		util::matrix_t<double> T_panel_out; // Panel HTF outlet T (K)
-		util::matrix_t<double> T_panel_in;	// Panel HTF inlet T (K)
-		util::matrix_t<double> T_panel_ave; // Panel average HTF T (k)
+		double T_s;			// Average external tube T (K)
+		double T_panel_out; // Panel HTF outlet T (K)
+		double T_panel_in;	// Panel HTF inlet T (K)
+		double T_panel_ave; // Panel average HTF T (k)
 
 		double q_dot_inc;  // Panel absorbed solar energy, but only 1 'panel' here! (W)
-		util::matrix_t<double> q_dot_conv; // Panel convection loss (W)
-		util::matrix_t<double> q_dot_rad;  // Panel radiation loss (W)
-		util::matrix_t<double> q_dot_loss; // Panel convection + radiation loss (W)
-		util::matrix_t<double> q_dot_abs;  // Panel energy to HTF (W)
+		double q_dot_conv; // Panel convection loss (W)
+		double q_dot_rad;  // Panel radiation loss (W)
+		double q_dot_loss; // Panel convection + radiation loss (W)
+		double q_dot_abs;  // Panel energy to HTF (W)
 
 		s_steady_state_soln()
 		{
@@ -117,12 +117,11 @@ public:
 			hour = T_amb = T_dp = v_wind_10 = p_amb = std::numeric_limits<double>::quiet_NaN();
 			dni = od_control  = m_dot_salt_tot = T_salt_cold_in = T_salt_hot = T_salt_hot_rec = T_salt_props = std::numeric_limits<double>::quiet_NaN();
 			u_salt = f = Q_inc_sum = Q_conv_sum = Q_rad_sum = Q_abs_sum = Q_dot_piping_loss = Q_inc_min = Q_thermal = eta_therm = delta_T_piping = std::numeric_limits<double>::quiet_NaN();
+            T_salt_hot_rec_path = Q_abs_path = std::numeric_limits<double>::quiet_NaN();
 
             mode = C_csp_collector_receiver::E_csp_cr_modes::ON;
             itermode = -1;
 			nuc_is_off = false;
-            T_salt_hot_rec_path.clear();
-            Q_abs_path.clear();
 		}
 
 	};

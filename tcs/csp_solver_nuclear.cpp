@@ -402,18 +402,12 @@ void C_nuclear::calculate_steady_state_soln(s_steady_state_soln &soln, double to
 	double T_sky = CSP::skytemp(T_amb, T_dp, hour);
 	double v_wind = log((m_h_tower + m_h_rec / 2) / 0.003) / log(10.0 / 0.003)*v_wind_10;
 
-	util::matrix_t<double> T_s_guess(m_n_panels);
-	util::matrix_t<double> T_panel_out_guess(m_n_panels);
-	util::matrix_t<double> T_panel_in_guess(m_n_panels);
-	util::matrix_t<double> T_film(m_n_panels);
+	double T_s_guess;
+	double T_panel_out_guess;
+	double T_panel_in_guess;
+	double T_film;
 
 	bool soln_exists = (soln.T_salt_hot == soln.T_salt_hot);
-
-    soln.m_dot_salt_tot = 0.0;
-    for (size_t j = 0; j < m_n_lines; j++)
-    {
-        soln.m_dot_salt_tot += soln.m_dot_salt_path.at(j);
-    }
 
 	// Set initial guess
 	double T_salt_hot_guess;
@@ -427,30 +421,9 @@ void C_nuclear::calculate_steady_state_soln(s_steady_state_soln &soln, double to
 	else // Initialize solution from scratch
 	{
 		T_salt_hot_guess = m_T_salt_hot_target;    // Initial guess for outlet T
-
-		soln.T_s.resize(m_n_panels);
-		soln.T_panel_out.resize(m_n_panels);
-		soln.T_panel_in.resize(m_n_panels);
-		soln.q_dot_conv.resize(m_n_panels);
-		soln.q_dot_rad.resize(m_n_panels);
-		soln.q_dot_loss.resize(m_n_panels);
-		soln.q_dot_abs.resize(m_n_panels);
-		soln.T_panel_ave.resize(m_n_panels);
-        soln.T_salt_hot_rec_path.resize(m_n_lines);
-        soln.Q_abs_path.resize(m_n_lines);
-
-		if (m_night_recirc == 1)
-		{
-			T_s_guess.fill(m_T_salt_hot_target);										//[K] Guess the temperature for the surface nodes
-			T_panel_out_guess.fill((m_T_salt_hot_target + soln.T_salt_cold_in) / 2.0);	//[K] Guess values for the fluid temp coming out of the control volume
-			T_panel_in_guess.fill((m_T_salt_hot_target + soln.T_salt_cold_in) / 2.0);	//[K] Guess values for the fluid temp coming into the control volume
-		}
-		else
-		{
-			T_s_guess.fill(m_T_salt_hot_target);			//[K] Guess the temperature for the surface nodes
-			T_panel_out_guess.fill(soln.T_salt_cold_in);	//[K] Guess values for the fluid temp coming out of the control volume
-			T_panel_in_guess.fill(soln.T_salt_cold_in);		//[K] Guess values for the fluid temp coming into the control volume
-		}
+        T_s_guess = m_T_salt_hot_target;			//[K] Guess the temperature for the surface nodes
+        T_panel_out_guess = soln.T_salt_cold_in;	//[K] Guess values for the fluid temp coming out of the control volume
+        T_panel_in_guess = soln.T_salt_cold_in;		//[K] Guess values for the fluid temp coming into the control volume
 	}
 
 
@@ -464,22 +437,16 @@ void C_nuclear::calculate_steady_state_soln(s_steady_state_soln &soln, double to
 			T_coolant_prop = (T_salt_hot_guess + soln.T_salt_cold_in) / 2.0;
 		double c_p_coolant = field_htfProps.Cp(T_coolant_prop)*1000.;	
 
-		for (int i = 0; i < m_n_panels; i++)
-		{
-			soln.T_s.at(i) = T_s_guess.at(i);
-			soln.T_panel_out.at(i) = T_panel_out_guess.at(i);
-			soln.T_panel_in.at(i) = T_panel_in_guess.at(i);
-			soln.T_panel_ave.at(i) = (soln.T_panel_in.at(i) + soln.T_panel_out.at(i)) / 2.0;		//[K] The average coolant temperature in each control volume
-			T_film.at(i) = (soln.T_s.at(i) + T_amb) / 2.0;											//[K] Film temperature
-		}
+		soln.T_s = T_s_guess;
+        soln.T_panel_out= T_panel_out_guess;
+        soln.T_panel_in = T_panel_in_guess;
+        soln.T_panel_ave = (soln.T_panel_in + soln.T_panel_out) / 2.0;		//[K] The average coolant temperature in each control volume
+        T_film = (soln.T_s+ T_amb) / 2.0;											//[K] Film temperature
 
 		// Calculate the average surface temperature
-		double T_s_sum = 0.0;
-		for (int i = 0; i < m_n_panels; i++)
-			T_s_sum += soln.T_s.at(i);
 		double T_film_ave = (T_amb + T_salt_hot_guess) / 2.0;
 
-
+        /*
 		// Convective coefficient for external forced convection using Siebers & Kraabel
 		double k_film = ambient_air.cond(T_film_ave);				//[W/m-K] The conductivity of the ambient air
 		double mu_film = ambient_air.visc(T_film_ave);				//[kg/m-s] Dynamic viscosity of the ambient air
@@ -495,73 +462,69 @@ void C_nuclear::calculate_steady_state_soln(s_steady_state_soln &soln, double to
 		double beta = 1.0 / T_amb;													//[1/K] Volumetric expansion coefficient
 		double nu_amb = ambient_air.visc(T_amb) / ambient_air.dens(T_amb, P_amb);	//[m^2/s] Kinematic viscosity		
 
-		for (size_t j = 0; j < m_n_lines; j++)   
-		{
-			for (size_t  i = 0; i < m_n_panels / m_n_lines; i++)
-			{
-				int i_fp = m_flow_pattern.at(j, i);
+        //====== Here there was a loop. 
+        
+        // Natural convection
+        double Gr_nat = fmax(0.0, CSP::grav*beta*(soln.T_s.at(i_fp) - T_amb)*pow(m_h_rec, 3) / pow(nu_amb, 2));	//[-] Grashof Number at ambient conditions
+        double Nusselt_nat = 0.098*pow(Gr_nat, (1.0 / 3.0))*pow(soln.T_s.at(i_fp) / T_amb, -0.14);				//[-] Nusselt number
+        double h_nat = Nusselt_nat * ambient_air.cond(T_amb) / m_h_rec * m_hl_ffact;							//[W/m^-K] Natural convection coefficient
 
-				// Natural convection
-				double Gr_nat = fmax(0.0, CSP::grav*beta*(soln.T_s.at(i_fp) - T_amb)*pow(m_h_rec, 3) / pow(nu_amb, 2));	//[-] Grashof Number at ambient conditions
-				double Nusselt_nat = 0.098*pow(Gr_nat, (1.0 / 3.0))*pow(soln.T_s.at(i_fp) / T_amb, -0.14);				//[-] Nusselt number
-				double h_nat = Nusselt_nat * ambient_air.cond(T_amb) / m_h_rec * m_hl_ffact;							//[W/m^-K] Natural convection coefficient
+        // Mixed convection
+        double h_mixed = pow((pow(h_for, m_m_mixed) + pow(h_nat, m_m_mixed)), 1.0 / m_m_mixed)*4.0;		//(4.0) is a correction factor to match convection losses at Solar II (correspondance with G. Kolb, SNL)
+        */
+        
+        soln.q_dot_conv = 0.0;			//[W] Convection losses per node
 
-				// Mixed convection
-				double h_mixed = pow((pow(h_for, m_m_mixed) + pow(h_nat, m_m_mixed)), 1.0 / m_m_mixed)*4.0;		//(4.0) is a correction factor to match convection losses at Solar II (correspondance with G. Kolb, SNL)
-				soln.q_dot_conv.at(i_fp) = h_mixed * m_A_node*(soln.T_s.at(i_fp) - T_film.at(i_fp));			//[W] Convection losses per node
+        // Radiation from the receiver - Calculate the radiation node by node
+        soln.q_dot_rad = 0.0;	//[W] Total radiation losses per node
+        soln.q_dot_loss = soln.q_dot_rad + soln.q_dot_conv;			//[W] Total overall losses per node
+        soln.q_dot_abs = soln.q_dot_inc - soln.q_dot_loss;			//[W] Absorbed flux at each node
 
-				// Radiation from the receiver - Calculate the radiation node by node
-				soln.q_dot_rad.at(i_fp) = 0.5*CSP::sigma*m_epsilon*m_A_node*(2.0*pow(soln.T_s.at(i_fp), 4) - pow(T_amb, 4) - pow(T_sky, 4))*m_hl_ffact;	//[W] Total radiation losses per node
-				soln.q_dot_loss.at(i_fp) = soln.q_dot_rad.at(i_fp) + soln.q_dot_conv.at(i_fp);			//[W] Total overall losses per node
-				soln.q_dot_abs.at(i_fp) = soln.q_dot_inc.at(i_fp) - soln.q_dot_loss.at(i_fp);			//[W] Absorbed flux at each node
+        // Calculate the temperature drop across the receiver tube wall... assume a cylindrical thermal resistance
+        double T_wall = (soln.T_s + soln.T_panel_ave) / 2.0;				//[K] The temperature at which the conductivity of the wall is evaluated
+        double k_tube = tube_material.cond(T_wall);											//[W/m-K] The conductivity of the wall
+        double R_tube_wall = m_th_tube / (k_tube*m_h_rec*m_d_rec*pow(CSP::pi, 2) / 2.0 );	//[K/W] The thermal resistance of the wall
 
-				// Calculate the temperature drop across the receiver tube wall... assume a cylindrical thermal resistance
-				double T_wall = (soln.T_s.at(i_fp) + soln.T_panel_ave.at(i_fp)) / 2.0;				//[K] The temperature at which the conductivity of the wall is evaluated
-				double k_tube = tube_material.cond(T_wall);											//[W/m-K] The conductivity of the wall
-				double R_tube_wall = m_th_tube / (k_tube*m_h_rec*m_d_rec*pow(CSP::pi, 2) / 2.0 / (double)m_n_panels);	//[K/W] The thermal resistance of the wall
+        // Calculations for the inside of the tube						
+        double mu_coolant = field_htfProps.visc(T_coolant_prop);							//[kg/m-s] Absolute viscosity of the coolant
+        double k_coolant = field_htfProps.cond(T_coolant_prop);								//[W/m-K] Conductivity of the coolant
+        double rho_coolant = field_htfProps.dens(T_coolant_prop, 1.0);						//[kg/m^3] Density of the coolant
+        double u_coolant = soln.m_dot_salt_tot / (m_n_t*rho_coolant*pow((m_id_tube / 2.0), 2)*CSP::pi);	//[m/s] Average velocity of the coolant through the receiver tubes
+        double Re_inner = rho_coolant * u_coolant*m_id_tube / mu_coolant;					//[-] Reynolds number of internal flow
+        double Pr_inner = c_p_coolant * mu_coolant / k_coolant;								//[-] Prandtl number of internal flow
 
-				// Calculations for the inside of the tube						
-				double mu_coolant = field_htfProps.visc(T_coolant_prop);							//[kg/m-s] Absolute viscosity of the coolant
-				double k_coolant = field_htfProps.cond(T_coolant_prop);								//[W/m-K] Conductivity of the coolant
-				double rho_coolant = field_htfProps.dens(T_coolant_prop, 1.0);						//[kg/m^3] Density of the coolant
-				double u_coolant = soln.m_dot_salt_path.at(j) / (m_n_t*rho_coolant*pow((m_id_tube / 2.0), 2)*CSP::pi);	//[m/s] Average velocity of the coolant through the receiver tubes
-				double Re_inner = rho_coolant * u_coolant*m_id_tube / mu_coolant;					//[-] Reynolds number of internal flow
-				double Pr_inner = c_p_coolant * mu_coolant / k_coolant;								//[-] Prandtl number of internal flow
+        double Nusselt_t, f;
+        CSP::PipeFlow(Re_inner, Pr_inner, m_LoverD, m_RelRough, Nusselt_t, f);
+        if (Nusselt_t <= 0.0)
+        {
+            soln.mode = C_csp_collector_receiver::OFF;	
+            break;
+        }
+        double h_inner = Nusselt_t * k_coolant / m_id_tube;								//[W/m^2-K] Convective coefficient between the inner tube wall and the coolant
+        double R_conv_inner = 1.0 / (h_inner*CSP::pi*m_id_tube / 2.0*m_h_rec*m_n_t);	//[K/W] Thermal resistance associated with this value
 
-				double Nusselt_t, f;
-				CSP::PipeFlow(Re_inner, Pr_inner, m_LoverD, m_RelRough, Nusselt_t, f);
-				if (Nusselt_t <= 0.0)
-				{
-					soln.mode = C_csp_collector_receiver::OFF;	
-					break;
-				}
-				double h_inner = Nusselt_t * k_coolant / m_id_tube;								//[W/m^2-K] Convective coefficient between the inner tube wall and the coolant
-				double R_conv_inner = 1.0 / (h_inner*CSP::pi*m_id_tube / 2.0*m_h_rec*m_n_t);	//[K/W] Thermal resistance associated with this value
+        soln.u_salt = u_coolant;
+        soln.f = f;
 
-				soln.u_salt = u_coolant;
-				soln.f = f;
+        // Update panel inlet/outlet temperature guess
+        if (i > 0)
+        {
+            int i_prev = m_flow_pattern.at(j, i - 1);   // Previous panel in flow order
+            T_panel_in_guess.at(i_fp) = T_panel_out_guess.at(i_prev);
+        }
+        else
+            T_panel_in_guess.at(i_fp) = soln.T_salt_cold_in;
+        
 
-				// Update panel inlet/outlet temperature guess
-				if (i > 0)
-				{
-					int i_prev = m_flow_pattern.at(j, i - 1);   // Previous panel in flow order
-					T_panel_in_guess.at(i_fp) = T_panel_out_guess.at(i_prev);
-				}
-				else
-					T_panel_in_guess.at(i_fp) = soln.T_salt_cold_in;
-				
+        T_panel_out_guess.at(i_fp) = T_panel_in_guess.at(i_fp) + soln.q_dot_abs.at(i_fp) / (soln.m_dot_salt_path.at(j)*c_p_coolant);		//[K] Energy balance for each node		
+        double Tavg = (T_panel_out_guess.at(i_fp) + T_panel_in_guess.at(i_fp)) / 2.0;											//[K] Panel average temperature
+        T_s_guess.at(i_fp) = Tavg + soln.q_dot_abs.at(i_fp)*(R_conv_inner + R_tube_wall);										//[K] Surface temperature based on the absorbed heat
+        if (T_s_guess.at(i_fp) < 1.0)
+        {
+            soln.mode = C_csp_collector_receiver::OFF;
+        }
 
-				T_panel_out_guess.at(i_fp) = T_panel_in_guess.at(i_fp) + soln.q_dot_abs.at(i_fp) / (soln.m_dot_salt_path.at(j)*c_p_coolant);		//[K] Energy balance for each node		
-				double Tavg = (T_panel_out_guess.at(i_fp) + T_panel_in_guess.at(i_fp)) / 2.0;											//[K] Panel average temperature
-				T_s_guess.at(i_fp) = Tavg + soln.q_dot_abs.at(i_fp)*(R_conv_inner + R_tube_wall);										//[K] Surface temperature based on the absorbed heat
-				if (T_s_guess.at(i_fp) < 1.0)
-				{
-					soln.mode = C_csp_collector_receiver::OFF;
-				}
-
-			}  // End loop over panels per flow path
-		}  // End loop over flow paths
-		
+		//======== Here ended the giant loop
 
 		if (soln.mode == C_csp_collector_receiver::OFF)
 			break;
