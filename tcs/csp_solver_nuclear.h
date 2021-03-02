@@ -47,15 +47,25 @@ public:
     double m_T_salt_hot_target;	    //[C], convert to K in init() call
     double m_m_dot_htf_max;			//[kg/s];		
     
-	double m_od_control;			//[-] Additional defocusing for over-design conditions
-	double m_tol_od;		//[-] Tolerance for over-design iteration
+    double m_T_s;
+	double m_T_panel_in;
+	double m_T_panel_out;
+	double m_T_panel_ave;
 
+	double m_q_dot_conv;
+	double m_q_dot_rad;
+	double m_q_dot_loss;
+	double m_q_dot_abs;
+	double m_q_dot_inc;
     
+	double m_od_control;			//[-] Additional defocusing for over-design conditions
+	double m_tol_od;		        //[-] Tolerance for over-design iteration
+
 	int m_n_panels;					//[-]
 	double m_d_rec;					//[m]
 	double m_h_rec;					//[m]
 
-    double m_A_sf;                      //[m2] "solar field" area, should delete this later
+    double m_A_sf;                  //[m2] "solar field" area, should delete this later
     
     int m_field_fl;	
 	int m_mat_tube;
@@ -143,7 +153,7 @@ public:
     C_csp_collector_receiver::E_csp_cr_modes m_mode_initial;
     double m_E_su_init;             //[W-hr] Initial startup energy
     double m_t_su_init;             //[hr] Startup time requirement
-	
+
 	S_outputs outputs;
 
 	// Methods

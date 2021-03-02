@@ -218,7 +218,179 @@ void C_nuclear::call(const C_csp_weatherreader::S_outputs &weather,
     soln.q_dot_inc = m_q_dot_nuc_des;  // Absorbed flux profiles at actual DNI and clear-sky defocus
     calculate_steady_state_soln(soln, 0.00025);  // Solve energy balances at clearsky mass flow rate and actual DNI conditions
 
+    // Set variables for use in the rest of the solution
+	nuc_is_off = soln.nuc_is_off;
+	m_mode = soln.mode;
+	m_itermode = soln.itermode;
+	m_od_control = soln.od_control;
     
+	m_dot_salt_tot = soln.m_dot_salt_tot;
+	T_salt_hot = soln.T_salt_hot;	
+	T_salt_hot_rec = soln.T_salt_hot_rec;
+	eta_therm = soln.eta_therm;
+
+	u_coolant = soln.u_salt;
+	f = soln.f;
+	T_coolant_prop = (T_salt_hot + T_salt_cold_in) / 2.0;
+	c_p_coolant = field_htfProps.Cp(T_coolant_prop)*1000.0;
+	rho_coolant = field_htfProps.dens(T_coolant_prop, 1.0);
+
+	q_conv_sum = soln.Q_conv_sum;
+	q_rad_sum = soln.Q_rad_sum;
+	q_dot_piping_loss = soln.Q_dot_piping_loss;
+	q_dot_inc_sum = soln.Q_inc_sum;
+	q_dot_inc_min_panel = soln.Q_inc_min;
+
+	m_T_s = soln.T_s;
+	m_T_panel_in = soln.T_panel_in;
+	m_T_panel_out = soln.T_panel_out;
+	m_T_panel_ave = soln.T_panel_ave;
+
+	m_q_dot_conv = soln.q_dot_conv;
+	m_q_dot_rad = soln.q_dot_rad;
+	m_q_dot_loss = soln.q_dot_conv + soln.q_dot_rad;
+	m_q_dot_abs = soln.q_dot_abs;
+	m_q_dot_inc = soln.q_dot_inc;
+    
+	// Calculate total absorbed solar energy and minimum absorbed per panel if needed
+	q_dot_inc_min_panel = q_dot_inc_sum;
+
+	double q_thermal_steadystate = soln.Q_thermal;
+
+	double DELTAP, Pres_D, W_dot_pump, q_thermal, q_startup;
+	DELTAP = Pres_D = W_dot_pump = q_thermal = q_startup = std::numeric_limits<double>::quiet_NaN();
+
+	q_startup = 0.0;
+
+	double time_required_su = step/3600.0;
+
+	if( !nuc_is_off )
+	{
+		m_dot_salt_tot_ss = m_dot_salt_tot;
+
+		switch( input_operation_mode )
+		{
+		case C_csp_collector_receiver::STARTUP:
+            {
+                throw(C_csp_exception("STARTUP mode node allowed", "Nuclear Island"));
+			}	
+
+			nuc_is_off = true;
+            
+			break;
+
+		case C_csp_collector_receiver::ON:
+			
+			if( m_E_su_prev > 0.0 || m_t_su_prev > 0.0 )
+			{
+				
+				m_E_su = fmax(0.0, m_E_su_prev - m_dot_salt_tot*c_p_coolant*(T_salt_hot - T_salt_cold_in)*step / 3600.0);	//[W-hr]
+				m_t_su = fmax(0.0, m_t_su_prev - step / 3600.0);	//[hr]
+
+				if( m_E_su + m_t_su > 0.0 )
+				{
+					m_mode = C_csp_collector_receiver::STARTUP;		// If either are greater than 0, we're staring up but not finished
+					
+					// 4.28.15 twn: Startup energy also needs to consider energy consumed during time requirement, if that is greater than energy requirement
+						//q_startup = (m_E_su_prev - m_E_su) / (step / 3600.0)*1.E-6;
+					q_startup = m_dot_salt_tot*c_p_coolant*(T_salt_hot - T_salt_cold_in)*step / 3600.0;
+
+					nuc_is_off = true;
+					f_rec_timestep = 0.0;
+				}
+				else
+				{
+					m_mode = C_csp_collector_receiver::ON;
+
+					double q_startup_energy_req = m_E_su_prev;	//[W-hr]
+					double q_startup_ramping_req = m_dot_salt_tot*c_p_coolant*(T_salt_hot - T_salt_cold_in)*m_t_su;	//[W-hr]
+					q_startup = fmax(q_startup_energy_req, q_startup_ramping_req);
+
+					// Adjust the available mass flow to reflect startup
+					m_dot_salt_tot = fmin((1.0 - m_t_su_prev / (step / 3600.0))*m_dot_salt_tot, m_dot_salt_tot - m_E_su_prev / ((step / 3600.0)*c_p_coolant*(T_salt_hot - T_salt_cold_in)));
+					f_rec_timestep = fmax(0.0, fmin(1.0 - m_t_su_prev / (step / 3600.0), 1.0 - m_E_su_prev / (m_dot_salt_tot*c_p_coolant*(T_salt_hot - T_salt_cold_in))));
+				}
+					//4.28.15 twn: Startup energy needs to consider
+				//q_startup = (m_E_su_prev - m_E_su) / (step / 3600.0)*1.E-6;
+			}
+			else
+			{
+				m_E_su = m_E_su_prev;
+				m_t_su = m_t_su_prev;
+				m_mode = C_csp_collector_receiver::ON;
+				q_startup = 0.0;
+
+				q_thermal = m_dot_salt_tot*c_p_coolant*(T_salt_hot - T_salt_cold_in);
+
+				if(q_dot_inc_sum < m_q_dot_inc_min && (!m_ignore_thermal_min || m_dot_salt_tot < m_f_rec_min*m_m_dot_htf_des || field_eff < 0.0))  // Allow minimums to be mass flow limits if m_ignore_thermal_min = true (added to allow receiver to continue operating at low thermal power with clear-sky control and cold-tank recirculation)
+				{
+					// If output here is less than specified allowed minimum, then need to shut off receiver
+					m_mode = C_csp_collector_receiver::OFF;
+
+					// Include here outputs that are ONLY set to zero if receiver completely off, and not attempting to start-up
+					W_dot_pump = 0.0;
+					// Pressure drops
+					DELTAP = 0.0; Pres_D = 0.0; u_coolant = 0.0;
+				}
+			}
+			break;
+
+		case C_csp_collector_receiver::STEADY_STATE:
+
+            throw(C_csp_exception("STARTUP mode node allowed", "Nuclear Island"));
+            
+			break;
+		
+		}	// End switch() on input_operation_mode
+
+		// Pressure drop calculations
+        calc_pump_performance(rho_coolant, m_dot_salt_tot, f, Pres_D, W_dot_pump);
+
+		q_thermal = m_dot_salt_tot*c_p_coolant*(T_salt_hot - T_salt_cold_in);
+		q_thermal_ss = m_dot_salt_tot_ss*c_p_coolant*(T_salt_hot - T_salt_cold_in);
+
+		// After convergence, determine whether the mass flow rate falls below the lower limit
+        if (q_dot_inc_sum < m_q_dot_inc_min && (!m_ignore_thermal_min || m_dot_salt_tot < m_f_rec_min * m_m_dot_htf_des || field_eff < 0.0))
+		{
+			// GOTO 900
+			// Steady State always reports q_thermal (even when much less than min) because model is letting receiver begin startup with this energy
+			// Should be a way to communicate to controller that q_thermal is less than q_min without losing this functionality
+			if(m_mode != C_csp_collector_receiver::STEADY_STATE || m_mode_prev == C_csp_collector_receiver::ON)
+				nuc_is_off = true;
+		}
+	}
+	else
+	{	// If receiver was off BEFORE startup deductions
+		m_mode = C_csp_collector_receiver::OFF;
+
+		// Include here outputs that are ONLY set to zero if receiver completely off, and not attempting to start-up
+		W_dot_pump = 0.0;
+		// Pressure drops
+		DELTAP = 0.0; Pres_D = 0.0; u_coolant = 0.0;
+	}
+
+	if( nuc_is_off )
+	{
+		// 900 continue	// Receiver isn't producing usable energy
+		m_dot_salt_tot = 0.0; eta_therm = 0.0; /*W_dot_pump = 0.0;*/
+		q_conv_sum = 0.0; q_rad_sum = 0.0; m_T_s.fill(0.0); q_thermal = 0.0;
+		// Set the receiver outlet temperature equal to the inlet design temperature
+		T_salt_hot = m_T_htf_cold_des;
+        T_salt_hot_rec = m_T_htf_cold_des;
+		q_dot_inc_sum = 0.0;
+		// Pressure drops
+		/*DELTAP = 0.0; Pres_D = 0.0; u_coolant = 0.0;*/
+		// Set receiver startup energy to 0
+		// q_startup = 0.0;
+		// ISCC outputs
+		m_dot_salt_tot_ss = 0.0; f_rec_timestep = 0.0; q_thermal_ss = 0.0;
+		q_thermal_csky = q_thermal_steadystate = 0.0;
+		
+
+		// Reset m_od_control
+		m_od_control = 1.0;		//[-]
+	}
+
 }
 
 void C_nuclear::off(const C_csp_weatherreader::S_outputs &weather,
