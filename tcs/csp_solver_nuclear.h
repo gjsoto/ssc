@@ -44,6 +44,10 @@ public:
 	// Data
     double m_dummy_area;
     double m_q_dot_nuc_res;
+    double m_T_salt_hot_target;	    //[C], convert to K in init() call
+    double m_m_dot_htf_max;			//[kg/s];		
+    double m_od_control;	
+    
 	int m_n_panels;					//[-]
 	double m_d_rec;					//[m]
 	double m_h_rec;					//[m]
@@ -52,6 +56,80 @@ public:
     
     double m_nuclear_su_delay;      //[hr] required startup time
     double m_nuclear_qf_delay;      //[-] required startup energy as fraction of design thermal output
+    
+    struct s_steady_state_soln
+	{
+		C_csp_collector_receiver::E_csp_cr_modes mode;
+		bool nuc_is_off;
+		int itermode;
+
+		double hour;				// Hour of the year 
+		double T_amb;				// Dry bulb temperature (K)
+		double T_dp;				// Dewpoint temperature (K)
+		double v_wind_10;			// Wind speed at 10m (m/s)
+		double p_amb;				// Ambient pressure (Pa)
+
+		double dni;					// DNI for this solution
+		double od_control;          // Defocus control
+
+		
+		double m_dot_salt_tot;      // Total salt mass flow (kg/s)
+		double T_salt_cold_in;		// Cold salt inlet temperature (K)
+		double T_salt_hot;			// Salt @ nuclear hot outlet T including piping loss (K)
+        double T_salt_hot_rec;      // Salt @ nuclear hot outlet T before piping loss (K)
+		double T_salt_props;		// Temperature at which salt properties are evaluated
+
+		double u_salt;				// Salt velocity (m/s)
+		double f;					// Friction factor
+
+		double Q_inc_sum;			// Total absorbed solar energy (W)
+		double Q_conv_sum;			// Total convection loss (W)
+		double Q_rad_sum;			// Total radiation loss (W)
+		double Q_abs_sum;			// Total energy transferred to HTF, not including piping loss (W)
+		double Q_dot_piping_loss;   // Piping loss (W)
+		double Q_inc_min;			// Minimum absorbed solar energy on any panel (W)
+		double Q_thermal;			// Thermal power delivered to fluid (less piping loss) (W)
+
+		double eta_therm;			// Receiver thermal efficiency (energy to HTF not including piping loss / Absorbed solar energy)
+        double delta_T_piping;      // Temperature change from thermal loss in piping (K)
+
+        std::vector<double> m_dot_salt_path;	// Salt mass flow per path (kg/s)
+        std::vector<double> T_salt_hot_rec_path;      // Receiver flow path outlet T before piping loss (K)
+        std::vector<double> Q_abs_path; // Total energy transferred to HTF per path, not including piping loss (W)
+
+		util::matrix_t<double> T_s;			// Average external tube T (K)
+		util::matrix_t<double> T_panel_out; // Panel HTF outlet T (K)
+		util::matrix_t<double> T_panel_in;	// Panel HTF inlet T (K)
+		util::matrix_t<double> T_panel_ave; // Panel average HTF T (k)
+
+		util::matrix_t<double> q_dot_inc;  // Panel absorbed solar energy (W)
+		util::matrix_t<double> q_dot_conv; // Panel convection loss (W)
+		util::matrix_t<double> q_dot_rad;  // Panel radiation loss (W)
+		util::matrix_t<double> q_dot_loss; // Panel convection + radiation loss (W)
+		util::matrix_t<double> q_dot_abs;  // Panel energy to HTF (W)
+
+		s_steady_state_soln()
+		{
+			clear();
+		}
+
+		void clear()
+		{
+			hour = T_amb = T_dp = v_wind_10 = p_amb = std::numeric_limits<double>::quiet_NaN();
+			dni = od_control  = m_dot_salt_tot = T_salt_cold_in = T_salt_hot = T_salt_hot_rec = T_salt_props = std::numeric_limits<double>::quiet_NaN();
+			u_salt = f = Q_inc_sum = Q_conv_sum = Q_rad_sum = Q_abs_sum = Q_dot_piping_loss = Q_inc_min = Q_thermal = eta_therm = delta_T_piping = std::numeric_limits<double>::quiet_NaN();
+
+            mode = C_csp_collector_receiver::E_csp_cr_modes::ON;
+            itermode = -1;
+			nuc_is_off = false;
+            m_dot_salt_path.clear();
+            T_salt_hot_rec_path.clear();
+            Q_abs_path.clear();
+		}
+
+	};
+
+	s_steady_state_soln m_mflow_soln_prev;  // Steady state solution using actual DNI from the last call to the model
     
 
 	C_csp_collector_receiver::E_csp_cr_modes m_mode_initial;

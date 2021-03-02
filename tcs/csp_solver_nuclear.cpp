@@ -35,6 +35,10 @@ C_nuclear::C_nuclear()
     m_mode_initial = C_csp_collector_receiver::E_csp_cr_modes::ON;
     m_mode = C_csp_collector_receiver::E_csp_cr_modes::ON;
     m_mode_prev = C_csp_collector_receiver::E_csp_cr_modes::ON;
+    
+    m_T_salt_hot_target = std::numeric_limits<double>::quiet_NaN();   
+    m_m_dot_htf_max     = std::numeric_limits<double>::quiet_NaN();
+    m_od_control        = std::numeric_limits<double>::quiet_NaN();
 
     m_nuclear_su_delay = 0.0;
     m_nuclear_qf_delay = 0.0;
@@ -44,7 +48,9 @@ void C_nuclear::init()
 {
 	m_T_htf_hot_des += 273.15;	//[K] Convert from input in [C]
 	m_T_htf_cold_des += 273.15;	//[K] Convert from input in [C]
-	m_q_dot_nuc_res *= 1.E6;	    //[W] Convert from input in [MW]    
+	m_q_dot_nuc_res *= 1.E6;	    //[W] Convert from input in [MW] 
+
+    m_T_salt_hot_target += 273.15;	//[K] Convert from input in [C]   
 }
 
 int C_nuclear::get_operating_state()
@@ -119,6 +125,49 @@ void C_nuclear::call(const C_csp_weatherreader::S_outputs &weather,
 	
 	bool nuc_is_off = false;
 	bool nuc_is_defocusing = false;
+
+	double T_coolant_prop = (m_T_salt_hot_target + T_salt_cold_in) / 2.0;		//[K] The temperature at which the coolant properties are evaluated. Validated as constant (mjw)
+	c_p_coolant = field_htfProps.Cp(T_coolant_prop)*1000.0;						//[J/kg-K] Specific heat of the coolant
+
+	double m_dot_htf_max = m_m_dot_htf_max;
+
+    // need an analogous "field eff" for nuclear to suggest defocus? maybe not needed
+	if (m_od_control < 1.0)
+	{	// Suggests controller applied defocus, so reset *controller* defocus
+		m_od_control = fmin(m_od_control, 1.0);
+	}
+    
+	// Initialize steady state solutions with current weather, DNI, field efficiency, and inlet conditions
+	s_steady_state_soln soln;
+	soln.hour = time / 3600.0;
+	soln.T_amb = weather.m_tdry + 273.15;
+	soln.T_dp = weather.m_tdew + 273.15;
+	soln.v_wind_10 = weather.m_wspd;
+	soln.p_amb = weather.m_pres * 100.0;
+
+	soln.dni = I_bn;
+	soln.T_salt_cold_in = T_salt_cold_in;	
+	soln.od_control = m_od_control;         // Initial defocus control (may be adjusted during the solution)
+    soln.mode = input_operation_mode;
+    soln.itermode = m_itermode;
+	soln.nuc_is_off = nuc_is_off;
+    
+
+    //--- Solve for mass flow at actual and/or clear-sky DNI extremes
+    if (use_previous_solution(soln, m_mflow_soln_prev))  // Same conditions were solved in the previous call to this method
+        soln = m_mflow_soln_prev;
+    else
+        solve_for_mass_flow_and_defocus(soln, m_dot_htf_max, flux_map_input);
+
+    m_mflow_soln_prev = soln;
+
+
+    //--- Set mass flow and calculate final solution
+    soln.q_dot_inc = calculate_flux_profiles(I_bn, field_eff, soln.od_control, flux_map_input);  // Absorbed flux profiles at actual DNI and clear-sky defocus
+    calculate_steady_state_soln(soln, 0.00025);  // Solve energy balances at clearsky mass flow rate and actual DNI conditions
+
+    
+
 
 
 }
