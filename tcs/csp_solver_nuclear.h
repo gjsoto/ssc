@@ -130,7 +130,7 @@ public:
 	};
 
 	s_steady_state_soln m_mflow_soln_prev;  // Steady state solution using actual DNI from the last call to the model
-    
+    bool use_previous_solution(const s_steady_state_soln& soln, const s_steady_state_soln& soln_prev);
 
 	C_csp_collector_receiver::E_csp_cr_modes m_mode_initial;
     double m_E_su_init;             //[W-hr] Initial startup energy

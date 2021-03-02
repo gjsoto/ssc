@@ -163,7 +163,7 @@ void C_nuclear::call(const C_csp_weatherreader::S_outputs &weather,
 
 
     //--- Set mass flow and calculate final solution
-    soln.q_dot_inc = calculate_flux_profiles(I_bn, field_eff, soln.od_control, flux_map_input);  // Absorbed flux profiles at actual DNI and clear-sky defocus
+    soln.q_dot_inc = m_q_dot_nuc_res;  // Absorbed flux profiles at actual DNI and clear-sky defocus
     calculate_steady_state_soln(soln, 0.00025);  // Solve energy balances at clearsky mass flow rate and actual DNI conditions
 
     
@@ -197,4 +197,23 @@ double C_nuclear::get_pumping_parasitic_coef()
 double C_nuclear::area_proj()
 {
     return m_A_sf; //[m^2] projected or aperture area of the receiver
+}
+
+
+bool C_mspt_receiver_222::use_previous_solution(const s_steady_state_soln& soln, const s_steady_state_soln& soln_prev)
+{
+	// Are these conditions identical to those used in the last solution?
+	if (!soln_prev.nuc_is_off && 
+		soln.dni == soln_prev.dni &&
+		soln.T_salt_cold_in == soln_prev.T_salt_cold_in &&
+		soln.od_control == soln_prev.od_control &&
+		soln.T_amb == soln_prev.T_amb && 
+		soln.T_dp == soln_prev.T_dp &&
+		soln.v_wind_10 == soln_prev.v_wind_10 &&
+		soln.p_amb == soln_prev.p_amb)
+	{
+		return true;
+	}
+	else
+		return false;
 }
