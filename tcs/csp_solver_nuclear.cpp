@@ -367,22 +367,11 @@ void C_nuclear::solve_for_mass_flow(s_steady_state_soln &soln)
 		double tolT = tol;
 		calculate_steady_state_soln(soln, tolT, 50);   // Solve steady state thermal model
 
-        std::vector<double> err_per_path(m_n_lines);
+        double err_per_path;
         err = -999.9;
-        m_dot_salt_tot = 0.0;
-        for (size_t j = 0; j < m_n_lines; j++)
-        {
-            m_dot_salt_tot += m_dot_salt_guess.at(j);
-            if (m_control_per_path)
-            {
-                err_per_path.at(j) = (soln.T_salt_hot_rec_path.at(j) - soln.delta_T_piping - m_T_salt_hot_target) / m_T_salt_hot_target;
-            }
-            else
-            {
-                err_per_path.at(j) = (soln.T_salt_hot - m_T_salt_hot_target) / m_T_salt_hot_target;
-            }
-            err = fmax(err, fabs(err_per_path.at(j)));
-        }
+        m_dot_salt_tot = m_dot_salt_guess;
+        err_per_path = (soln.T_salt_hot - m_T_salt_hot_target) / m_T_salt_hot_target;
+        err = fmax(err, fabs(err_per_path));
 
 		if (soln.nuc_is_off)  // SS solution was unsuccessful or resulted in an infeasible exit temperature -> remove outlet T for solution to start next iteration from the default intial guess
 			soln.T_salt_hot = std::numeric_limits<double>::quiet_NaN();
@@ -390,19 +379,8 @@ void C_nuclear::solve_for_mass_flow(s_steady_state_soln &soln)
 		if (fabs(err) > tol)
 		{
             double m_dot_salt_min = 1.e10;
-            for (size_t j = 0; j < m_n_lines; j++)
-            {
-                m_dot_salt_min = fmin(m_dot_salt_min, m_dot_salt_guess.at(j));
-                if (m_control_per_path)
-                {
-                    double Qpiping = soln.Q_dot_piping_loss * (m_dot_salt_guess.at(j) / m_dot_salt_tot);
-                    m_dot_salt_guess.at(j) = (soln.Q_abs_path.at(j) - Qpiping) / (c_p_coolant * (m_T_salt_hot_target - soln.T_salt_cold_in));			//[kg/s]
-                }
-                else
-                {
-                    m_dot_salt_guess.at(j) = (soln.Q_abs_sum - soln.Q_dot_piping_loss) / (m_n_lines * c_p_coolant * (m_T_salt_hot_target - soln.T_salt_cold_in));
-                }
-            }
+            m_dot_salt_guess = (soln.Q_abs_sum - soln.Q_dot_piping_loss) / (c_p_coolant * (m_T_salt_hot_target - soln.T_salt_cold_in));
+            m_dot_salt_min = fmin(m_dot_salt_min, m_dot_salt_guess);
 
 			if (m_dot_salt_min < 1.E-5)
 			{
@@ -414,20 +392,11 @@ void C_nuclear::solve_for_mass_flow(s_steady_state_soln &soln)
         else
         {
             converged = true;
-            for (size_t j = 0; j < m_n_lines; j++)
+            if (err_per_path > 0.0)   // Solution has converged but outlet T is above target.  CSP solver seems to perform better with slighly under-design temperature than with slighly over-design temperatures.
             {
-                if (err_per_path.at(j) > 0.0)   // Solution has converged but outlet T is above target.  CSP solver seems to perform better with slighly under-design temperature than with slighly over-design temperatures.
-                {
-                    converged = false;
-                    if (m_control_per_path)
-                    {
-                        m_dot_salt_guess.at(j) *= (soln.T_salt_hot_rec_path.at(j) - soln.delta_T_piping - soln.T_salt_cold_in) / ((1.0 - 0.5 * tol) * m_T_salt_hot_target - soln.T_salt_cold_in);
-                    }
-                    else
-                    {
-                        m_dot_salt_guess.at(j) *= (soln.T_salt_hot - soln.T_salt_cold_in) / ((1.0 - 0.5 * tol) * m_T_salt_hot_target - soln.T_salt_cold_in);
-                    }
-                }
+                converged = false;
+                m_dot_salt_guess *= (soln.T_salt_hot - soln.T_salt_cold_in) / ((1.0 - 0.5 * tol) * m_T_salt_hot_target - soln.T_salt_cold_in);
+
             }
         }
 	}
