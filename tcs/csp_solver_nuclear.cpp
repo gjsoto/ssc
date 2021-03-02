@@ -104,7 +104,7 @@ void C_nuclear::call(const C_csp_weatherreader::S_outputs &weather,
 	double zenith = weather.m_solzen;
 	double azimuth = weather.m_solazi;
 	double v_wind_10 = weather.m_wspd;
-	double I_bn = weather.m_beam;
+	double I_bn = 1000;
 
 	double T_sky = CSP::skytemp(T_amb, T_dp, hour);
 
@@ -227,13 +227,13 @@ void C_nuclear::solve_for_mass_flow_and_defocus(s_steady_state_soln &soln, doubl
 
 	while (rec_is_defocusing)
 	{
-		if (soln.rec_is_off)
+		if (soln.nuc_is_off)
 			break;
 
 		soln.q_dot_inc = m_q_dot_nuc_des;  // Calculate flux profiles
 		solve_for_mass_flow(soln);	// Iterative calculation of mass flow to produce target outlet temperature
 
-		if (soln.rec_is_off)
+		if (soln.nuc_is_off)
 			break;
 
         double m_dot_salt_tot = 0.0;
@@ -276,41 +276,20 @@ void C_nuclear::solve_for_mass_flow(s_steady_state_soln &soln)
 	soln.T_salt_props = (m_T_salt_hot_target + soln.T_salt_cold_in) / 2.0;		//[K] The temperature at which the coolant properties are evaluated. Validated as constant (mjw)
 	double c_p_coolant = field_htfProps.Cp(soln.T_salt_props)*1000.0;				//[J/kg-K] Specific heat of the coolant
 
-	std::vector<double> m_dot_salt_guess(m_n_lines);
+	double m_dot_salt_guess;
 	if (soln_exists)  // Use existing solution as intial guess
 	{
-		m_dot_salt_guess = soln.m_dot_salt_path;
+		m_dot_salt_guess = soln.m_dot_salt_tot;
 	}
 	else  // Set inital guess for mass flow solution
 	{
-        soln.m_dot_salt_path.resize(m_n_lines);
-
-		double q_dot_inc_sum = 0.0;
-		for (int i = 0; i < m_n_panels; i++)
-			q_dot_inc_sum += soln.q_dot_inc.at(i);		//[kW] Total power absorbed by receiver
+        
+		double q_dot_inc_sum = soln.q_dot_inc;		//[kW] Total power absorbed by receiver
 
 		double c_guess = field_htfProps.Cp((m_T_salt_hot_target + soln.T_salt_cold_in) / 2.0)*1000.;	//[kJ/kg-K] Estimate the specific heat of the fluid in receiver
 
-        double m_guess;
-		if (soln.dni > 1.E-6)
-		{
-			double q_guess = 0.85*q_dot_inc_sum;		//[kW] Estimate the thermal power produced by the receiver			
-			m_guess = q_guess / (c_guess*(m_T_salt_hot_target - soln.T_salt_cold_in)*m_n_lines);	//[kg/s] Mass flow rate for each flow path			
-		}
-		else	// The tower recirculates at night (based on earlier conditions)
-		{
-			// Enter recirculation mode, where inlet/outlet temps switch
-			double T_salt_hot = m_T_salt_hot_target;
-			m_T_salt_hot_target = soln.T_salt_cold_in;
-			soln.T_salt_cold_in = T_salt_hot;
-			m_guess = -3500.0 / (c_guess*(m_T_salt_hot_target - soln.T_salt_cold_in) / 2.0);
+        m_dot_salt_guess = q_dot_inc_sum / (c_guess*(m_T_salt_hot_target - soln.T_salt_cold_in));	//[kg/s] Mass flow rate for each flow path			
 
-		}
-
-        for (size_t j = 0; j < m_n_lines; j++)
-        {
-            m_dot_salt_guess.at(j) = m_guess;
-        }
 	}
 
 
@@ -335,7 +314,7 @@ void C_nuclear::solve_for_mass_flow(s_steady_state_soln &soln)
 		if (qq > qq_max)
 		{
 			soln.mode = C_csp_collector_receiver::OFF;  // Set the startup mode
-			soln.rec_is_off = true;
+			soln.nuc_is_off = true;
 			break;
 		}
 
@@ -360,7 +339,7 @@ void C_nuclear::solve_for_mass_flow(s_steady_state_soln &soln)
             err = fmax(err, fabs(err_per_path.at(j)));
         }
 
-		if (soln.rec_is_off)  // SS solution was unsuccessful or resulted in an infeasible exit temperature -> remove outlet T for solution to start next iteration from the default intial guess
+		if (soln.nuc_is_off)  // SS solution was unsuccessful or resulted in an infeasible exit temperature -> remove outlet T for solution to start next iteration from the default intial guess
 			soln.T_salt_hot = std::numeric_limits<double>::quiet_NaN();
 
 		if (fabs(err) > tol)
@@ -383,7 +362,7 @@ void C_nuclear::solve_for_mass_flow(s_steady_state_soln &soln)
 			if (m_dot_salt_min < 1.E-5)
 			{
 				soln.mode = C_csp_collector_receiver::OFF;
-				soln.rec_is_off = true;
+				soln.nuc_is_off = true;
 				break;
 			}
 		}

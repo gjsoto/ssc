@@ -93,7 +93,6 @@ public:
 		double eta_therm;			// Receiver thermal efficiency (energy to HTF not including piping loss / Absorbed solar energy)
         double delta_T_piping;      // Temperature change from thermal loss in piping (K)
 
-        std::vector<double> m_dot_salt_path;	// Salt mass flow per path (kg/s)
         std::vector<double> T_salt_hot_rec_path;      // Receiver flow path outlet T before piping loss (K)
         std::vector<double> Q_abs_path; // Total energy transferred to HTF per path, not including piping loss (W)
 
@@ -122,7 +121,6 @@ public:
             mode = C_csp_collector_receiver::E_csp_cr_modes::ON;
             itermode = -1;
 			nuc_is_off = false;
-            m_dot_salt_path.clear();
             T_salt_hot_rec_path.clear();
             Q_abs_path.clear();
 		}
