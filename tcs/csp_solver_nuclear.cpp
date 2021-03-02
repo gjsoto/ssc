@@ -489,7 +489,7 @@ void C_nuclear::calculate_steady_state_soln(s_steady_state_soln &soln, double to
         soln.T_panel_out= T_panel_out_guess;
         soln.T_panel_in = T_panel_in_guess;
         soln.T_panel_ave = (soln.T_panel_in + soln.T_panel_out) / 2.0;		//[K] The average coolant temperature in each control volume
-        T_film = (soln.T_s+ T_amb) / 2.0;											//[K] Film temperature
+        T_film = (soln.T_s+ T_amb) / 2.0;									//[K] Film temperature
 
 		// Calculate the average surface temperature
 		double T_film_ave = (T_amb + T_salt_hot_guess) / 2.0;
@@ -527,7 +527,8 @@ void C_nuclear::calculate_steady_state_soln(s_steady_state_soln &soln, double to
         soln.q_dot_rad = 0.0;	//[W] Total radiation losses per node
         soln.q_dot_loss = soln.q_dot_rad + soln.q_dot_conv;			//[W] Total overall losses per node
         soln.q_dot_abs = soln.q_dot_inc - soln.q_dot_loss;			//[W] Absorbed flux at each node
-
+        
+        /*
         // Calculate the temperature drop across the receiver tube wall... assume a cylindrical thermal resistance
         double T_wall = (soln.T_s + soln.T_panel_ave) / 2.0;				//[K] The temperature at which the conductivity of the wall is evaluated
         double k_tube = tube_material.cond(T_wall);											//[W/m-K] The conductivity of the wall
@@ -537,7 +538,7 @@ void C_nuclear::calculate_steady_state_soln(s_steady_state_soln &soln, double to
         double mu_coolant = field_htfProps.visc(T_coolant_prop);							//[kg/m-s] Absolute viscosity of the coolant
         double k_coolant = field_htfProps.cond(T_coolant_prop);								//[W/m-K] Conductivity of the coolant
         double rho_coolant = field_htfProps.dens(T_coolant_prop, 1.0);						//[kg/m^3] Density of the coolant
-        double u_coolant = soln.m_dot_salt_tot / (m_n_t*rho_coolant*pow((m_id_tube / 2.0), 2)*CSP::pi);	//[m/s] Average velocity of the coolant through the receiver tubes
+        double u_coolant = soln.m_dot_salt_tot / (rho_coolant*pow((m_id_tube / 2.0), 2)*CSP::pi);	//[m/s] Average velocity of the coolant through the receiver tubes
         double Re_inner = rho_coolant * u_coolant*m_id_tube / mu_coolant;					//[-] Reynolds number of internal flow
         double Pr_inner = c_p_coolant * mu_coolant / k_coolant;								//[-] Prandtl number of internal flow
 
@@ -553,45 +554,31 @@ void C_nuclear::calculate_steady_state_soln(s_steady_state_soln &soln, double to
 
         soln.u_salt = u_coolant;
         soln.f = f;
-
-        // Update panel inlet/outlet temperature guess
-        if (i > 0)
-        {
-            int i_prev = m_flow_pattern.at(j, i - 1);   // Previous panel in flow order
-            T_panel_in_guess.at(i_fp) = T_panel_out_guess.at(i_prev);
-        }
-        else
-            T_panel_in_guess.at(i_fp) = soln.T_salt_cold_in;
+        */
         
-
-        T_panel_out_guess.at(i_fp) = T_panel_in_guess.at(i_fp) + soln.q_dot_abs.at(i_fp) / (soln.m_dot_salt_path.at(j)*c_p_coolant);		//[K] Energy balance for each node		
-        double Tavg = (T_panel_out_guess.at(i_fp) + T_panel_in_guess.at(i_fp)) / 2.0;											//[K] Panel average temperature
-        T_s_guess.at(i_fp) = Tavg + soln.q_dot_abs.at(i_fp)*(R_conv_inner + R_tube_wall);										//[K] Surface temperature based on the absorbed heat
-        if (T_s_guess.at(i_fp) < 1.0)
+        // Update panel inlet/outlet temperature guess
+        T_panel_in_guess = soln.T_salt_cold_in;
+        
+        T_panel_out_guess = T_panel_in_guess + soln.q_dot_abs/ (soln.m_dot_salt_tot*c_p_coolant);		//[K] Energy balance for each node		
+        //double Tavg = (T_panel_out_guess + T_panel_in_guess) / 2.0;											//[K] Panel average temperature
+        //T_s_guess = Tavg + soln.q_dot_abs*(R_conv_inner + R_tube_wall);										//[K] Surface temperature based on the absorbed heat
+        /*
+        if (T_s_guess < 1.0)
         {
             soln.mode = C_csp_collector_receiver::OFF;
+            break;
         }
+        */
 
 		//======== Here ended the giant loop
 
-		if (soln.mode == C_csp_collector_receiver::OFF)
-			break;
-
 		// Calculate average receiver outlet temperature
-		int klast = m_n_panels / m_n_lines - 1;
-		double T_salt_hot_guess_sum = 0.0;
-        double m_dot_salt_tot = 0.0;
-        for (int j = 0; j < m_n_lines; j++)
-        {
-            soln.T_salt_hot_rec_path.at(j) = T_panel_out_guess.at(m_flow_pattern.at(j, klast));  // Receiver outlet T for path j (before piping loss)
-            m_dot_salt_tot += soln.m_dot_salt_path.at(j); //[kg/s]
-            T_salt_hot_guess_sum += soln.m_dot_salt_path.at(j) * soln.T_salt_hot_rec_path.at(j);		//[K] Update the calculated hot salt outlet temp
-        }
-		soln.T_salt_hot = T_salt_hot_guess_sum / m_dot_salt_tot;  // Mass-weighted average exit temperature
+		soln.T_salt_hot = T_panel_out_guess;  // no need for Mass-weighted average exit temperature
         soln.T_salt_hot_rec = soln.T_salt_hot;
 
 
 		// Calculate outlet temperature after piping losses
+        /*
 		soln.Q_dot_piping_loss = 0.0;
         soln.delta_T_piping = 0.0;
 		if (m_Q_dot_piping_loss > 0.0)
@@ -607,7 +594,7 @@ void C_nuclear::calculate_steady_state_soln(s_steady_state_soln &soln, double to
 			soln.delta_T_piping = soln.Q_dot_piping_loss / (m_dot_salt_tot*c_p_coolant);	//[K]
 			soln.T_salt_hot -= soln.delta_T_piping;	//[K]
 		}
-		
+		*/
 		
 		// Check convergence
 		double err = (soln.T_salt_hot - T_salt_hot_guess) / T_salt_hot_guess;
@@ -622,30 +609,12 @@ void C_nuclear::calculate_steady_state_soln(s_steady_state_soln &soln, double to
 	//	soln.mode = C_csp_collector_receiver::OFF;
 
 
-	// Save overall energy loss
-	soln.Q_inc_sum = 0.0;
-	soln.Q_conv_sum = 0.0;
-	soln.Q_rad_sum = 0.0;
-	soln.Q_abs_sum = 0.0;
-	soln.Q_inc_min = soln.q_dot_inc.at(0);
-	for (int i = 0; i < m_n_panels; i++)
-	{
-		soln.Q_inc_sum += soln.q_dot_inc.at(i);
-		soln.Q_conv_sum += soln.q_dot_conv.at(i);
-		soln.Q_rad_sum += soln.q_dot_rad.at(i);
-		soln.Q_abs_sum += soln.q_dot_abs.at(i);
-		soln.Q_inc_min = fmin(soln.Q_inc_min, soln.q_dot_inc.at(i));
-	}
-
-    for (size_t j = 0; j < m_n_lines; j++)
-    {
-        soln.Q_abs_path.at(j) = 0.0;
-        for (size_t i = 0; i < m_n_panels / m_n_lines; i++)
-        {
-            int i_fp = m_flow_pattern.at(j, i);
-            soln.Q_abs_path.at(j) += soln.q_dot_abs.at(i_fp);
-        }
-    }
+	// Save overall energy loss (can delete later)
+    soln.Q_inc_sum = soln.q_dot_inc;
+    soln.Q_conv_sum = soln.q_dot_conv;
+    soln.Q_rad_sum = soln.q_dot_rad;
+    soln.Q_abs_sum = soln.q_dot_abs;
+    soln.Q_inc_min = fmin(soln.Q_inc_min, soln.q_dot_inc);
 
 	soln.Q_thermal = soln.Q_abs_sum - soln.Q_dot_piping_loss;
 
@@ -654,18 +623,18 @@ void C_nuclear::calculate_steady_state_soln(s_steady_state_soln &soln, double to
 	else
 		soln.eta_therm = 0.0;
 
-	soln.rec_is_off = false;
+	soln.nuc_is_off = false;
 	if (soln.mode == C_csp_collector_receiver::OFF)
-		soln.rec_is_off = true;
+		soln.nuc_is_off = true;
 
 	// Save final temperature profile solution
-	if (!soln.rec_is_off)
+	if (!soln.nuc_is_off)
 	{
 		soln.T_s = T_s_guess;
 		soln.T_panel_out = T_panel_out_guess;
 		soln.T_panel_in = T_panel_in_guess;
 		for (int i = 0; i < m_n_panels; i++)
-			soln.T_panel_ave.at(i) = (soln.T_panel_in.at(i) + soln.T_panel_out.at(i)) / 2.0;
+			soln.T_panel_ave = (soln.T_panel_in + soln.T_panel_out) / 2.0;
 	}
 
 	return;

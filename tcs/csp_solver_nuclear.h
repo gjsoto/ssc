@@ -97,8 +97,7 @@ public:
         double delta_T_piping;      // Temperature change from thermal loss in piping (K)
 
         double T_salt_hot_rec_path;      // Receiver flow path outlet T before piping loss (K)
-        double Q_abs_path; // Total energy transferred to HTF per path, not including piping loss (W)
-
+        
 		double T_s;			// Average external tube T (K)
 		double T_panel_out; // Panel HTF outlet T (K)
 		double T_panel_in;	// Panel HTF inlet T (K)
@@ -120,7 +119,7 @@ public:
 			hour = T_amb = T_dp = v_wind_10 = p_amb = std::numeric_limits<double>::quiet_NaN();
 			dni = od_control  = m_dot_salt_tot = T_salt_cold_in = T_salt_hot = T_salt_hot_rec = T_salt_props = std::numeric_limits<double>::quiet_NaN();
 			u_salt = f = Q_inc_sum = Q_conv_sum = Q_rad_sum = Q_abs_sum = Q_dot_piping_loss = Q_inc_min = Q_thermal = eta_therm = delta_T_piping = std::numeric_limits<double>::quiet_NaN();
-            T_salt_hot_rec_path = Q_abs_path = std::numeric_limits<double>::quiet_NaN();
+            T_salt_hot_rec_path = std::numeric_limits<double>::quiet_NaN();
 
             mode = C_csp_collector_receiver::E_csp_cr_modes::ON;
             itermode = -1;
