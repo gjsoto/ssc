@@ -42,6 +42,7 @@ C_nuclear::C_nuclear()
 
     m_nuclear_su_delay = 0.0;
     m_nuclear_qf_delay = 0.0;
+    
 }
 
 void C_nuclear::init()
@@ -51,6 +52,53 @@ void C_nuclear::init()
 	m_q_dot_nuc_des *= 1.E6;	    //[W] Convert from input in [MW] 
 
     m_T_salt_hot_target += 273.15;	//[K] Convert from input in [C]   
+    
+    set_material_properties();
+}
+
+void C_nuclear::set_material_properties()
+{
+    ambient_air.SetFluid(ambient_air.Air);
+
+	// Declare instance of fluid class for FIELD fluid
+	if( m_field_fl != HTFProperties::User_defined && m_field_fl < HTFProperties::End_Library_Fluids )
+	{
+		if( !field_htfProps.SetFluid( m_field_fl ) )
+		{
+			throw(C_csp_exception("Nuclear HTF code is not recognized", "Nuclear Island"));
+		}
+	}
+	else if( m_field_fl == HTFProperties::User_defined )
+	{
+
+			error_msg = util::format("The user defined HTF table not implemented in Nuclear Island model.");
+			throw(C_csp_exception(error_msg, "Nuclear Island"));
+	}
+	else
+	{
+		throw(C_csp_exception("Nuclear HTF code is not recognized", "Nuclear Island"));
+	}
+
+	
+	// Declare instance of htf class for receiver tube material
+	if( m_mat_tube == HTFProperties::Stainless_AISI316 || m_mat_tube == HTFProperties::T91_Steel ||
+        m_mat_tube == HTFProperties::N06230 || m_mat_tube == HTFProperties::N07740)
+	{
+		if( !tube_material.SetFluid(m_mat_tube) )
+		{
+			throw(C_csp_exception("Tube material code not recognized", "Nuclear Island"));
+		}
+	}
+	else if( m_mat_tube == HTFProperties::User_defined )
+	{
+		throw(C_csp_exception("Nuclear material currently does not accept user defined properties", "Nuclear Island"));
+	}
+	else
+	{
+		error_msg = util::format("Nuclear material code, %d, is not recognized", m_mat_tube);
+		throw(C_csp_exception(error_msg, "Nuclear Island"));
+	}
+
 }
 
 int C_nuclear::get_operating_state()

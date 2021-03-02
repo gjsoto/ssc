@@ -54,6 +54,9 @@ public:
 
     double m_A_sf;                      //[m2] "solar field" area, should delete this later
     
+    int m_field_fl;	
+	int m_mat_tube;
+    
     double m_nuclear_su_delay;      //[hr] required startup time
     double m_nuclear_qf_delay;      //[-] required startup energy as fraction of design thermal output
     
@@ -133,7 +136,9 @@ public:
 	void solve_for_mass_flow_and_defocus(s_steady_state_soln &soln, double m_dot_htf_max, const util::matrix_t<double> *flux_map_input);
 	void solve_for_defocus_given_flow(s_steady_state_soln &soln, const util::matrix_t<double> *flux_map_input);
 
-	C_csp_collector_receiver::E_csp_cr_modes m_mode_initial;
+	void set_material_properties();
+    
+    C_csp_collector_receiver::E_csp_cr_modes m_mode_initial;
     double m_E_su_init;             //[W-hr] Initial startup energy
     double m_t_su_init;             //[hr] Startup time requirement
 	
