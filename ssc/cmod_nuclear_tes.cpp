@@ -2020,7 +2020,7 @@ public:
         nuclear_island->m_T_htf_hot_des = as_double("T_htf_hot_des");             //[C]
         nuclear_island->m_T_htf_cold_des = as_double("T_htf_cold_des");           //[C] 
         nuclear_island->m_A_sf = as_double("A_sf");  
-        nuclear_island->m_q_dot_nuc_res = as_double("q_dot_nuclear_des");
+        nuclear_island->m_q_dot_nuc_des = as_double("q_dot_nuclear_des");
 
         C_csp_nuclear_plant heating_plant(*nuclear_island);
 

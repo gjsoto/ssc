@@ -46,7 +46,10 @@ public:
     double m_q_dot_nuc_des;
     double m_T_salt_hot_target;	    //[C], convert to K in init() call
     double m_m_dot_htf_max;			//[kg/s];		
-    double m_od_control;	
+    
+	double m_od_control;			//[-] Additional defocusing for over-design conditions
+	double m_tol_od;		//[-] Tolerance for over-design iteration
+
     
 	int m_n_panels;					//[-]
 	double m_d_rec;					//[m]
@@ -132,8 +135,8 @@ public:
     bool use_previous_solution(const s_steady_state_soln& soln, const s_steady_state_soln& soln_prev);
 	void calculate_steady_state_soln(s_steady_state_soln &soln, double tol, int max_iter = 50);
 	void solve_for_mass_flow(s_steady_state_soln &soln);
-	void solve_for_mass_flow_and_defocus(s_steady_state_soln &soln, double m_dot_htf_max, const util::matrix_t<double> *flux_map_input);
-	void solve_for_defocus_given_flow(s_steady_state_soln &soln, const util::matrix_t<double> *flux_map_input);
+	void solve_for_mass_flow_and_defocus(s_steady_state_soln &soln, double m_dot_htf_max);
+	void solve_for_defocus_given_flow(s_steady_state_soln &soln);
 
 	void set_material_properties();
     

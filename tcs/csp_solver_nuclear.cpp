@@ -53,6 +53,12 @@ void C_nuclear::init()
 
     m_T_salt_hot_target += 273.15;	//[K] Convert from input in [C]   
     
+    m_mode = m_mode_initial;					//[-] 0 = requires startup, 1 = starting up, 2 = running
+	m_itermode = 1;			//[-] 1: Solve for design temp, 2: solve to match mass flow restriction
+	m_od_control = 1.0;			//[-] Additional defocusing for over-design conditions
+	m_tol_od = 0.001;		//[-] Tolerance for over-design iteration
+
+    
     set_material_properties();
 }
 
@@ -200,12 +206,11 @@ void C_nuclear::call(const C_csp_weatherreader::S_outputs &weather,
     soln.itermode = m_itermode;
 	soln.nuc_is_off = nuc_is_off;
     
-
     //--- Solve for mass flow at actual and/or clear-sky DNI extremes
     if (use_previous_solution(soln, m_mflow_soln_prev))  // Same conditions were solved in the previous call to this method
         soln = m_mflow_soln_prev;
     else
-        solve_for_mass_flow_and_defocus(soln, m_dot_htf_max, flux_map_input);
+        solve_for_mass_flow_and_defocus(soln, m_dot_htf_max);
 
     m_mflow_soln_prev = soln;
 
@@ -214,9 +219,6 @@ void C_nuclear::call(const C_csp_weatherreader::S_outputs &weather,
     calculate_steady_state_soln(soln, 0.00025);  // Solve energy balances at clearsky mass flow rate and actual DNI conditions
 
     
-
-
-
 }
 
 void C_nuclear::off(const C_csp_weatherreader::S_outputs &weather,
@@ -246,7 +248,6 @@ double C_nuclear::area_proj()
     return m_A_sf; //[m^2] projected or aperture area of the receiver
 }
 
-
 bool C_nuclear::use_previous_solution(const s_steady_state_soln& soln, const s_steady_state_soln& soln_prev)
 {
 	// Are these conditions identical to those used in the last solution?
@@ -265,15 +266,13 @@ bool C_nuclear::use_previous_solution(const s_steady_state_soln& soln, const s_s
 		return false;
 }
 
-
 // Calculate mass flow rate and defocus needed to achieve target outlet temperature given DNI
-void C_nuclear::solve_for_mass_flow_and_defocus(s_steady_state_soln &soln, double m_dot_htf_max, const util::matrix_t<double> *flux_map_input)
+void C_nuclear::solve_for_mass_flow_and_defocus(s_steady_state_soln &soln, double m_dot_htf_max)
 {
-
-	bool rec_is_defocusing = true;
+	bool nuc_is_defocusing = true;
 	double err_od = 999.0;
 
-	while (rec_is_defocusing)
+	while (nuc_is_defocusing)
 	{
 		if (soln.nuc_is_off)
 			break;
@@ -284,14 +283,10 @@ void C_nuclear::solve_for_mass_flow_and_defocus(s_steady_state_soln &soln, doubl
 		if (soln.nuc_is_off)
 			break;
 
-        double m_dot_salt_tot = 0.0;
-        for (size_t j = 0; j < m_n_lines; j++)
-        {
-            m_dot_salt_tot += soln.m_dot_salt_path.at(j);
-        }
+        double m_dot_salt_tot = soln.m_dot_salt_tot;
 
 		// Limit the HTF mass flow rate to the maximum, if needed
-		rec_is_defocusing = false;
+		nuc_is_defocusing = false;
 		if ((m_dot_salt_tot > m_dot_htf_max) || soln.itermode == 2)
 		{
 			double err_od = (m_dot_salt_tot - m_dot_htf_max) / m_dot_htf_max;
@@ -299,21 +294,19 @@ void C_nuclear::solve_for_mass_flow_and_defocus(s_steady_state_soln &soln, doubl
 			{
 				soln.itermode = 1;
 				soln.od_control = 1.0;
-				rec_is_defocusing = false;
+				nuc_is_defocusing = false;
 			}
 			else
 			{
 				soln.od_control = soln.od_control * pow((m_dot_htf_max / m_dot_salt_tot), 0.8);	//[-] Adjust the over-design defocus control by modifying the current value
 				soln.itermode = 2;
-				rec_is_defocusing = true;
+				nuc_is_defocusing = true;
 			}
 		}
-
 	}
 
 	return;
 }
-
 
 // Calculate mass flow rate needed to achieve target outlet temperature (m_T_salt_hot_target) given incident flux profiles
 void C_nuclear::solve_for_mass_flow(s_steady_state_soln &soln)
@@ -405,7 +398,6 @@ void C_nuclear::solve_for_mass_flow(s_steady_state_soln &soln)
 
 	return;
 }
-
 
 // Calculate steady state temperature and heat loss profiles for a given mass flow and incident flux
 void C_nuclear::calculate_steady_state_soln(s_steady_state_soln &soln, double tol, int max_iter)
