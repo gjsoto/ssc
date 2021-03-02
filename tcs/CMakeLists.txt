@@ -36,6 +36,7 @@ set(TCS_SRC
 		csp_solver_mspt_receiver.cpp
 		csp_solver_mspt_receiver_222.cpp
 		csp_solver_nuclear.cpp
+		csp_solver_nuclear_plant.cpp
 		csp_solver_pc_gen.cpp
 		csp_solver_pc_heat_sink.cpp
 		csp_solver_pc_Rankine_indirect_224.cpp
@@ -130,6 +131,7 @@ set(TCS_SRC
 		csp_solver_mspt_receiver.h
 		csp_solver_mspt_receiver_222.h
 		csp_solver_nuclear.h 
+		csp_solver_nuclear_plant.h
 		csp_solver_pc_gen.h
 		csp_solver_pc_heat_sink.h
 		csp_solver_pc_Rankine_indirect_224.h
