@@ -74,7 +74,7 @@ void C_csp_nuclear_plant::init(const C_csp_collector_receiver::S_csp_cr_init_inp
 				C_csp_collector_receiver::S_csp_cr_solved_params & solved_params)
 {
     mc_nuclear.init();
-    solved_params.m_A_aper_total = 10.0;	//[m^2]
+    solved_params.m_A_aper_total = mc_nuclear.m_dummy_area;	//[m^2]
     solved_params.m_T_htf_cold_des = mc_nuclear.m_T_htf_cold_des;       //[K]
     solved_params.m_T_htf_hot_des = mc_nuclear.m_T_htf_hot_des;         //[K]
     solved_params.m_q_dot_rec_des = mc_nuclear.m_q_rec_des / 1.E6;		//[MW]
@@ -103,7 +103,7 @@ double C_csp_nuclear_plant::get_pumping_parasitic_coef()  //MWe/MWt
 
 double C_csp_nuclear_plant::get_min_power_delivery()    //MWt
 {
-    return mc_nuclear.m_f_rec_min * mc_nuclear.m_q_rec_des*1.e-6;
+    return mc_nuclear.m_f_rec_min * mc_nuclear.m_q_dot_nuc_res*1.e-6;
 }
 
 
@@ -348,7 +348,7 @@ double C_csp_nuclear_plant::get_collector_area()
     //return p->m_dens_mirror * p->m_helio_height * p->m_helio_width * (double)p->m_helio_positions.nrows();
 
     //return mc_heat_input.m_A_sf;
-    return 10.0;
+    return mc_nuclear.m_dummy_area;
 }
 
 double C_csp_nuclear_plant::calculate_thermal_efficiency_approx( const C_csp_weatherreader::S_outputs &weather, double q_inc )

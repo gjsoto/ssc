@@ -28,20 +28,20 @@ OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 C_nuclear::C_nuclear()
 {
-    m_is_nuclear_only = false;
+    m_dummy_area = 42.0;
     m_mode_initial = C_csp_collector_receiver::E_csp_cr_modes::ON;
     m_mode = C_csp_collector_receiver::E_csp_cr_modes::ON;
     m_mode_prev = C_csp_collector_receiver::E_csp_cr_modes::ON;
 
-    m_nuclear_su_delay = std::numeric_limits<double>::quiet_NaN();
-    m_nuclear_qf_delay = std::numeric_limits<double>::quiet_NaN();
+    m_nuclear_su_delay = 0.0;
+    m_nuclear_qf_delay = 0.0;
 }
 
 void C_nuclear::init()
 {
 	m_T_htf_hot_des += 273.15;	//[K] Convert from input in [C]
 	m_T_htf_cold_des += 273.15;	//[K] Convert from input in [C]
-	m_q_rec_des *= 1.E6;	    //[W] Convert from input in [MW]    
+	m_q_dot_nuc_res *= 1.E6;	    //[W] Convert from input in [MW]    
 }
 
 int C_nuclear::get_operating_state()

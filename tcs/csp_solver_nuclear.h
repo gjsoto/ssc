@@ -39,7 +39,8 @@ public:
 	C_csp_messages csp_messages;
 
 	// Data
-    bool m_is_nuclear_only;
+    double m_dummy_area;
+    double m_q_dot_nuc_res;
 	int m_n_panels;					//[-]
 	double m_d_rec;					//[m]
 	double m_h_rec;					//[m]
