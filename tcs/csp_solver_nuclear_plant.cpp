@@ -103,7 +103,7 @@ double C_csp_nuclear_plant::get_pumping_parasitic_coef()  //MWe/MWt
 
 double C_csp_nuclear_plant::get_min_power_delivery()    //MWt
 {
-    return mc_nuclear.m_f_rec_min * mc_nuclear.m_q_dot_nuc_res*1.e-6;
+    return mc_nuclear.m_f_rec_min * mc_nuclear.m_q_dot_nuc_des*1.e-6;
 }
 
 

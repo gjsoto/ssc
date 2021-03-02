@@ -43,7 +43,7 @@ public:
 
 	// Data
     double m_dummy_area;
-    double m_q_dot_nuc_res;
+    double m_q_dot_nuc_des;
     double m_T_salt_hot_target;	    //[C], convert to K in init() call
     double m_m_dot_htf_max;			//[kg/s];		
     double m_od_control;	
@@ -102,7 +102,7 @@ public:
 		util::matrix_t<double> T_panel_in;	// Panel HTF inlet T (K)
 		util::matrix_t<double> T_panel_ave; // Panel average HTF T (k)
 
-		util::matrix_t<double> q_dot_inc;  // Panel absorbed solar energy (W)
+		double q_dot_inc;  // Panel absorbed solar energy, but only 1 'panel' here! (W)
 		util::matrix_t<double> q_dot_conv; // Panel convection loss (W)
 		util::matrix_t<double> q_dot_rad;  // Panel radiation loss (W)
 		util::matrix_t<double> q_dot_loss; // Panel convection + radiation loss (W)
@@ -131,6 +131,10 @@ public:
 
 	s_steady_state_soln m_mflow_soln_prev;  // Steady state solution using actual DNI from the last call to the model
     bool use_previous_solution(const s_steady_state_soln& soln, const s_steady_state_soln& soln_prev);
+	void calculate_steady_state_soln(s_steady_state_soln &soln, double tol, int max_iter = 50);
+	void solve_for_mass_flow(s_steady_state_soln &soln);
+	void solve_for_mass_flow_and_defocus(s_steady_state_soln &soln, double m_dot_htf_max, const util::matrix_t<double> *flux_map_input);
+	void solve_for_defocus_given_flow(s_steady_state_soln &soln, const util::matrix_t<double> *flux_map_input);
 
 	C_csp_collector_receiver::E_csp_cr_modes m_mode_initial;
     double m_E_su_init;             //[W-hr] Initial startup energy

@@ -48,7 +48,7 @@ void C_nuclear::init()
 {
 	m_T_htf_hot_des += 273.15;	//[K] Convert from input in [C]
 	m_T_htf_cold_des += 273.15;	//[K] Convert from input in [C]
-	m_q_dot_nuc_res *= 1.E6;	    //[W] Convert from input in [MW] 
+	m_q_dot_nuc_des *= 1.E6;	    //[W] Convert from input in [MW] 
 
     m_T_salt_hot_target += 273.15;	//[K] Convert from input in [C]   
 }
@@ -65,7 +65,7 @@ double C_nuclear::get_startup_time()
 
 double C_nuclear::get_startup_energy()
 {
-    return m_nuclear_qf_delay * m_q_dot_nuc_res * 1.e-6;  // MWh
+    return m_nuclear_qf_delay * m_q_dot_nuc_des * 1.e-6;  // MWh
 }
 
 double C_nuclear::get_remaining_startup_energy()
@@ -161,9 +161,8 @@ void C_nuclear::call(const C_csp_weatherreader::S_outputs &weather,
 
     m_mflow_soln_prev = soln;
 
-
     //--- Set mass flow and calculate final solution
-    soln.q_dot_inc = m_q_dot_nuc_res;  // Absorbed flux profiles at actual DNI and clear-sky defocus
+    soln.q_dot_inc = m_q_dot_nuc_des;  // Absorbed flux profiles at actual DNI and clear-sky defocus
     calculate_steady_state_soln(soln, 0.00025);  // Solve energy balances at clearsky mass flow rate and actual DNI conditions
 
     
@@ -200,7 +199,7 @@ double C_nuclear::area_proj()
 }
 
 
-bool C_mspt_receiver_222::use_previous_solution(const s_steady_state_soln& soln, const s_steady_state_soln& soln_prev)
+bool C_nuclear::use_previous_solution(const s_steady_state_soln& soln, const s_steady_state_soln& soln_prev)
 {
 	// Are these conditions identical to those used in the last solution?
 	if (!soln_prev.nuc_is_off && 
@@ -216,4 +215,200 @@ bool C_mspt_receiver_222::use_previous_solution(const s_steady_state_soln& soln,
 	}
 	else
 		return false;
+}
+
+
+// Calculate mass flow rate and defocus needed to achieve target outlet temperature given DNI
+void C_nuclear::solve_for_mass_flow_and_defocus(s_steady_state_soln &soln, double m_dot_htf_max, const util::matrix_t<double> *flux_map_input)
+{
+
+	bool rec_is_defocusing = true;
+	double err_od = 999.0;
+
+	while (rec_is_defocusing)
+	{
+		if (soln.rec_is_off)
+			break;
+
+		soln.q_dot_inc = m_q_dot_nuc_des;  // Calculate flux profiles
+		solve_for_mass_flow(soln);	// Iterative calculation of mass flow to produce target outlet temperature
+
+		if (soln.rec_is_off)
+			break;
+
+        double m_dot_salt_tot = 0.0;
+        for (size_t j = 0; j < m_n_lines; j++)
+        {
+            m_dot_salt_tot += soln.m_dot_salt_path.at(j);
+        }
+
+		// Limit the HTF mass flow rate to the maximum, if needed
+		rec_is_defocusing = false;
+		if ((m_dot_salt_tot > m_dot_htf_max) || soln.itermode == 2)
+		{
+			double err_od = (m_dot_salt_tot - m_dot_htf_max) / m_dot_htf_max;
+			if (err_od < m_tol_od)
+			{
+				soln.itermode = 1;
+				soln.od_control = 1.0;
+				rec_is_defocusing = false;
+			}
+			else
+			{
+				soln.od_control = soln.od_control * pow((m_dot_htf_max / m_dot_salt_tot), 0.8);	//[-] Adjust the over-design defocus control by modifying the current value
+				soln.itermode = 2;
+				rec_is_defocusing = true;
+			}
+		}
+
+	}
+
+	return;
+}
+
+
+// Calculate mass flow rate needed to achieve target outlet temperature (m_T_salt_hot_target) given incident flux profiles
+void C_nuclear::solve_for_mass_flow(s_steady_state_soln &soln)
+{
+
+	bool soln_exists = (soln.m_dot_salt_tot == soln.m_dot_salt_tot);
+
+	soln.T_salt_props = (m_T_salt_hot_target + soln.T_salt_cold_in) / 2.0;		//[K] The temperature at which the coolant properties are evaluated. Validated as constant (mjw)
+	double c_p_coolant = field_htfProps.Cp(soln.T_salt_props)*1000.0;				//[J/kg-K] Specific heat of the coolant
+
+	std::vector<double> m_dot_salt_guess(m_n_lines);
+	if (soln_exists)  // Use existing solution as intial guess
+	{
+		m_dot_salt_guess = soln.m_dot_salt_path;
+	}
+	else  // Set inital guess for mass flow solution
+	{
+        soln.m_dot_salt_path.resize(m_n_lines);
+
+		double q_dot_inc_sum = 0.0;
+		for (int i = 0; i < m_n_panels; i++)
+			q_dot_inc_sum += soln.q_dot_inc.at(i);		//[kW] Total power absorbed by receiver
+
+		double c_guess = field_htfProps.Cp((m_T_salt_hot_target + soln.T_salt_cold_in) / 2.0)*1000.;	//[kJ/kg-K] Estimate the specific heat of the fluid in receiver
+
+        double m_guess;
+		if (soln.dni > 1.E-6)
+		{
+			double q_guess = 0.85*q_dot_inc_sum;		//[kW] Estimate the thermal power produced by the receiver			
+			m_guess = q_guess / (c_guess*(m_T_salt_hot_target - soln.T_salt_cold_in)*m_n_lines);	//[kg/s] Mass flow rate for each flow path			
+		}
+		else	// The tower recirculates at night (based on earlier conditions)
+		{
+			// Enter recirculation mode, where inlet/outlet temps switch
+			double T_salt_hot = m_T_salt_hot_target;
+			m_T_salt_hot_target = soln.T_salt_cold_in;
+			soln.T_salt_cold_in = T_salt_hot;
+			m_guess = -3500.0 / (c_guess*(m_T_salt_hot_target - soln.T_salt_cold_in) / 2.0);
+
+		}
+
+        for (size_t j = 0; j < m_n_lines; j++)
+        {
+            m_dot_salt_guess.at(j) = m_guess;
+        }
+	}
+
+
+	// Set solution tolerance
+	double T_salt_hot_guess = 9999.9;		//[K] Initial guess value for error calculation
+	double err = -999.9;					//[-] Relative outlet temperature error
+	double tol = std::numeric_limits<double>::quiet_NaN();
+	if (m_night_recirc == 1)
+		tol = 0.0057;
+	else
+		tol = 0.00025;
+
+	int qq_max = 50;
+	int qq = 0;
+    double m_dot_salt_tot;
+	bool converged = false;
+	while (!converged)
+	{
+		qq++;
+
+		// if the problem fails to converge after 50 iterations, then the power is likely negligible and the zero set can be returned
+		if (qq > qq_max)
+		{
+			soln.mode = C_csp_collector_receiver::OFF;  // Set the startup mode
+			soln.rec_is_off = true;
+			break;
+		}
+
+		soln.m_dot_salt_path = m_dot_salt_guess;
+		double tolT = tol;
+		calculate_steady_state_soln(soln, tolT, 50);   // Solve steady state thermal model
+
+        std::vector<double> err_per_path(m_n_lines);
+        err = -999.9;
+        m_dot_salt_tot = 0.0;
+        for (size_t j = 0; j < m_n_lines; j++)
+        {
+            m_dot_salt_tot += m_dot_salt_guess.at(j);
+            if (m_control_per_path)
+            {
+                err_per_path.at(j) = (soln.T_salt_hot_rec_path.at(j) - soln.delta_T_piping - m_T_salt_hot_target) / m_T_salt_hot_target;
+            }
+            else
+            {
+                err_per_path.at(j) = (soln.T_salt_hot - m_T_salt_hot_target) / m_T_salt_hot_target;
+            }
+            err = fmax(err, fabs(err_per_path.at(j)));
+        }
+
+		if (soln.rec_is_off)  // SS solution was unsuccessful or resulted in an infeasible exit temperature -> remove outlet T for solution to start next iteration from the default intial guess
+			soln.T_salt_hot = std::numeric_limits<double>::quiet_NaN();
+
+		if (fabs(err) > tol)
+		{
+            double m_dot_salt_min = 1.e10;
+            for (size_t j = 0; j < m_n_lines; j++)
+            {
+                m_dot_salt_min = fmin(m_dot_salt_min, m_dot_salt_guess.at(j));
+                if (m_control_per_path)
+                {
+                    double Qpiping = soln.Q_dot_piping_loss * (m_dot_salt_guess.at(j) / m_dot_salt_tot);
+                    m_dot_salt_guess.at(j) = (soln.Q_abs_path.at(j) - Qpiping) / (c_p_coolant * (m_T_salt_hot_target - soln.T_salt_cold_in));			//[kg/s]
+                }
+                else
+                {
+                    m_dot_salt_guess.at(j) = (soln.Q_abs_sum - soln.Q_dot_piping_loss) / (m_n_lines * c_p_coolant * (m_T_salt_hot_target - soln.T_salt_cold_in));
+                }
+            }
+
+			if (m_dot_salt_min < 1.E-5)
+			{
+				soln.mode = C_csp_collector_receiver::OFF;
+				soln.rec_is_off = true;
+				break;
+			}
+		}
+        else
+        {
+            converged = true;
+            for (size_t j = 0; j < m_n_lines; j++)
+            {
+                if (err_per_path.at(j) > 0.0)   // Solution has converged but outlet T is above target.  CSP solver seems to perform better with slighly under-design temperature than with slighly over-design temperatures.
+                {
+                    converged = false;
+                    if (m_control_per_path)
+                    {
+                        m_dot_salt_guess.at(j) *= (soln.T_salt_hot_rec_path.at(j) - soln.delta_T_piping - soln.T_salt_cold_in) / ((1.0 - 0.5 * tol) * m_T_salt_hot_target - soln.T_salt_cold_in);
+                    }
+                    else
+                    {
+                        m_dot_salt_guess.at(j) *= (soln.T_salt_hot - soln.T_salt_cold_in) / ((1.0 - 0.5 * tol) * m_T_salt_hot_target - soln.T_salt_cold_in);
+                    }
+                }
+            }
+        }
+	}
+
+	soln.m_dot_salt_tot = m_dot_salt_tot;
+
+	return;
 }
