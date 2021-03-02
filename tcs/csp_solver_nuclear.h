@@ -37,6 +37,9 @@ class C_nuclear : public C_pt_receiver
 public:
 	// Class to save messages for up stream classes
 	C_csp_messages csp_messages;
+    
+    int m_ncall;
+    int m_itermode;
 
 	// Data
     double m_dummy_area;
@@ -54,7 +57,6 @@ public:
 	C_csp_collector_receiver::E_csp_cr_modes m_mode_initial;
     double m_E_su_init;             //[W-hr] Initial startup energy
     double m_t_su_init;             //[hr] Startup time requirement
-    
 	
 	S_outputs outputs;
 
