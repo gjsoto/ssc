@@ -165,7 +165,7 @@ void C_csp_nuclear_plant::call(const C_csp_weatherreader::S_outputs &weather,
 	mc_reported_outputs.value(E_Q_DOT_THERMAL, mc_nuclear.ms_outputs.m_Q_thermal);	//[MWt]
 	mc_reported_outputs.value(E_M_DOT_HTF, mc_nuclear.ms_outputs.m_m_dot_salt_tot);	//[kg/hr]
 		// If startup, then timestep may have changed (why not report this from 222 in MWt?)
-	mc_reported_outputs.value(E_Q_DOT_STARTUP, 0.0;		//[MWt])
+	mc_reported_outputs.value(E_Q_DOT_STARTUP, 0.0);		//[MWt])
 	mc_reported_outputs.value(E_T_HTF_IN, htf_state_in.m_temp);									//[C]
 	mc_reported_outputs.value(E_T_HTF_OUT, mc_nuclear.ms_outputs.m_T_salt_hot);		//[C]
     mc_reported_outputs.value(E_T_HTF_OUT_REC, mc_nuclear.ms_outputs.m_T_salt_hot_rec);		//[C]
@@ -277,10 +277,7 @@ void C_csp_nuclear_plant::on(const C_csp_weatherreader::S_outputs &weather,
 	//C_csp_collector_receiver::S_csp_cr_out_report &cr_out_report,
 	const C_csp_solver_sim_info &sim_info)
 {
-	// For now, define on(...) shell that calls call() with operation mode defined.
-	// Should eventually develop an 'on' method for the MSPT
 
-	// Define 'C_csp_cr_inputs' for call(...)
 	C_csp_collector_receiver::S_csp_cr_inputs inputs;
 	inputs.m_input_operation_mode = C_csp_collector_receiver::ON;
 	inputs.m_field_control = field_control;
@@ -297,7 +294,7 @@ void C_csp_nuclear_plant::estimates(const C_csp_weatherreader::S_outputs &weathe
 	// Should eventually develop an estimate(...) method for the MSPT
 	
 	C_csp_collector_receiver::S_csp_cr_inputs inputs;
-	inputs.m_input_operation_mode = C_csp_collector_receiver::STEADY_STATE;
+	inputs.m_input_operation_mode = C_csp_collector_receiver::ON;
 	inputs.m_field_control = 1.0;
 
 	C_csp_collector_receiver::S_csp_cr_out_solver cr_out_solver;
@@ -343,29 +340,8 @@ double C_csp_nuclear_plant::get_collector_area()
 
 double C_csp_nuclear_plant::calculate_thermal_efficiency_approx( const C_csp_weatherreader::S_outputs &weather, double q_inc )
 {
-    /* 
-    A very approximate thermal efficiency used for quick optimization performance projections
-    */
 
-    double T_eff = (mc_nuclear.m_T_htf_cold_des + mc_nuclear.m_T_htf_hot_des)*.55;
-
-    double T_amb = weather.m_tdry + 273.15;
-    double T_eff4 = T_eff * T_eff;
-    T_eff4 *= T_eff4;
-    double T_amb4 = T_amb * T_amb;
-    T_amb4 *= T_amb4;
-
-    double Arec = mc_nuclear.area_proj();
-
-    double q_rad = 5.67e-8*mc_nuclear.m_epsilon * Arec * (T_eff4 - T_amb4) * 1.e-6;   //MWt
-
-    double v = weather.m_wspd;
-    double v2 = v*v;
-    double v3 = v2*v;
-
-    double q_conv = q_rad/2. * (-0.001129*v3 + 0.031229*v2 - 0.01822*v +0.962476);  //convection is about half radiation, scale by wind speed. surrogate regression from molten salt run.
-
-    return max(1. - (q_rad + q_conv)/q_inc, 0.);
+    return 1.0;
 
 }
 
@@ -375,7 +351,6 @@ void C_csp_nuclear_plant::converged()
 	mc_nuclear.converged();
 
     // Set reported heliostat converged value
-    bool is_field_tracking_final;
     mc_reported_outputs.value(E_IS_FIELD_TRACKING_FINAL, 0);			//[-]
 
     // Set reported receiver converged value
