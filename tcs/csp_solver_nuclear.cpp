@@ -47,18 +47,21 @@ C_nuclear::C_nuclear()
 
 void C_nuclear::init()
 {
+    // Unit Conversions
+	m_od_tube /= 1.E3;			//[m] Convert from input in [mm]
+	m_th_tube /= 1.E3;			//[m] Convert from input in [mm]
 	m_T_htf_hot_des += 273.15;	//[K] Convert from input in [C]
 	m_T_htf_cold_des += 273.15;	//[K] Convert from input in [C]
 	m_q_dot_nuc_des *= 1.E6;	    //[W] Convert from input in [MW] 
 
     m_T_salt_hot_target += 273.15;	//[K] Convert from input in [C]   
+    m_id_tube = m_od_tube - 2 * m_th_tube;			//[m] Inner diameter of receiver tube
     
     m_mode = m_mode_initial;					//[-] 0 = requires startup, 1 = starting up, 2 = running
 	m_itermode = 1;			//[-] 1: Solve for design temp, 2: solve to match mass flow restriction
 	m_od_control = 1.0;			//[-] Additional defocusing for over-design conditions
 	m_tol_od = 0.001;		//[-] Tolerance for over-design iteration
 
-    
     set_material_properties();
 }
 
@@ -374,8 +377,7 @@ void C_nuclear::converged()
 void C_nuclear::calc_pump_performance(double rho_f, double mdot, double ffact, double &PresDrop_calc, double &WdotPump_calc)
 {
     // Pressure drop calculations
-	double mpertube = mdot;
-	double u_coolant = mpertube / (rho_f * m_id_tube * m_id_tube * 0.25 * CSP::pi);	//[m/s] Average velocity of the coolant through the receiver tubes
+	double u_coolant = mdot / (rho_f * m_id_tube * m_id_tube * 0.25 * CSP::pi);	//[m/s] Average velocity of the coolant through the receiver tubes
 
 	double L_e_45 = 16.0;						// The equivalent length produced by the 45 degree bends in the tubes - Into to Fluid Mechanics, Fox et al.
 	double L_e_90 = 30.0;						// The equivalent length produced by the 90 degree bends in the tubes

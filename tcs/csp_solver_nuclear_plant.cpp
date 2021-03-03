@@ -133,10 +133,6 @@ void C_csp_nuclear_plant::call(const C_csp_weatherreader::S_outputs &weather,
 {
 	// What about catching errors here?
 	
-	// First call heliostat field class: 'csp_solver_pt_heliostat'
-	// Then use its outputs as inputs to receiver class: 'csp_solver_mspt_receiver_222'
-
-	// Set heliostat field call() parameters and solve
 
 	// Get heliostat field outputs and set corresponding receiver inputs
 	C_pt_receiver::S_inputs receiver_inputs;
@@ -144,16 +140,10 @@ void C_csp_nuclear_plant::call(const C_csp_weatherreader::S_outputs &weather,
 	receiver_inputs.m_input_operation_mode = inputs.m_input_operation_mode;
 	mc_nuclear.call(weather, htf_state_in, receiver_inputs, sim_info);
 		
-	// Set collector/receiver parent class outputs and return
-	//cr_out_report.m_eta_field = mc_pt_heliostatfield.ms_outputs.m_eta_field;				//[-]
-    //cr_out_report.m_sf_adjust_out = mc_pt_heliostatfield.ms_outputs.m_sf_adjust_out;
-	//cr_out_report.m_q_dot_field_inc = mc_pt_heliostatfield.ms_outputs.m_q_dot_field_inc;	//[MWt]
 
-	//cr_out_report.m_q_dot_rec_inc = mc_heat_input.ms_outputs.m_q_dot_rec_inc;		//[MWt]
-	//cr_out_report.m_eta_thermal = mc_heat_input.ms_outputs.m_eta_therm;				//[-]
 	cr_out_solver.m_q_thermal = mc_nuclear.ms_outputs.m_Q_thermal;				//[MW]
 	cr_out_solver.m_q_startup = mc_nuclear.ms_outputs.m_q_startup;				//[MWt-hr]
-	//cr_out_report.m_q_dot_piping_loss = mc_heat_input.ms_outputs.m_q_dot_piping_loss;	//[MWt]
+    
 	cr_out_solver.m_m_dot_salt_tot = mc_nuclear.ms_outputs.m_m_dot_salt_tot;		//[kg/hr]
 	cr_out_solver.m_T_salt_hot = mc_nuclear.ms_outputs.m_T_salt_hot;				//[C]
 	
@@ -162,8 +152,8 @@ void C_csp_nuclear_plant::call(const C_csp_weatherreader::S_outputs &weather,
 	cr_out_solver.m_W_dot_htf_pump = mc_nuclear.ms_outputs.m_W_dot_pump;			//[MWe]
 	cr_out_solver.m_W_dot_col_tracking = 0.0;		//[MWe]
 
-	cr_out_solver.m_time_required_su = mc_nuclear.ms_outputs.m_time_required_su;	//[s]
-	cr_out_solver.m_q_rec_heattrace = mc_nuclear.ms_outputs.m_q_heattrace / (mc_nuclear.ms_outputs.m_time_required_su / 3600.0);		//[MWt])
+	cr_out_solver.m_time_required_su = 0.0;	//[s]
+	cr_out_solver.m_q_rec_heattrace = 0.0;		//[MWt])
 
 
 	mc_reported_outputs.value(E_FIELD_Q_DOT_INC, 0.0);	//[MWt]
@@ -175,14 +165,14 @@ void C_csp_nuclear_plant::call(const C_csp_weatherreader::S_outputs &weather,
 	mc_reported_outputs.value(E_Q_DOT_THERMAL, mc_nuclear.ms_outputs.m_Q_thermal);	//[MWt]
 	mc_reported_outputs.value(E_M_DOT_HTF, mc_nuclear.ms_outputs.m_m_dot_salt_tot);	//[kg/hr]
 		// If startup, then timestep may have changed (why not report this from 222 in MWt?)
-	mc_reported_outputs.value(E_Q_DOT_STARTUP, mc_nuclear.ms_outputs.m_q_startup / (mc_nuclear.ms_outputs.m_time_required_su / 3600.0));		//[MWt])
+	mc_reported_outputs.value(E_Q_DOT_STARTUP, 0.0;		//[MWt])
 	mc_reported_outputs.value(E_T_HTF_IN, htf_state_in.m_temp);									//[C]
 	mc_reported_outputs.value(E_T_HTF_OUT, mc_nuclear.ms_outputs.m_T_salt_hot);		//[C]
     mc_reported_outputs.value(E_T_HTF_OUT_REC, mc_nuclear.ms_outputs.m_T_salt_hot_rec);		//[C]
 	mc_reported_outputs.value(E_Q_DOT_PIPE_LOSS, mc_nuclear.ms_outputs.m_q_dot_piping_loss);	//[MWt]
     mc_reported_outputs.value(E_Q_DOT_LOSS, mc_nuclear.ms_outputs.m_q_rad_sum + mc_nuclear.ms_outputs.m_q_conv_sum ); //MWt
     // from transient model:
-	mc_reported_outputs.value(E_P_HEATTRACE, mc_nuclear.ms_outputs.m_q_heattrace / (mc_nuclear.ms_outputs.m_time_required_su / 3600.0));		//[MWt])
+	mc_reported_outputs.value(E_P_HEATTRACE, 0.0);		//[MWt])
 	mc_reported_outputs.value(E_T_HTF_OUT_END, mc_nuclear.ms_outputs.m_inst_T_salt_hot);	//[C]
     mc_reported_outputs.value(E_T_HTF_OUT_END_REC, mc_nuclear.ms_outputs.m_inst_T_salt_hot_rec);		//[C]
 	mc_reported_outputs.value(E_T_HTF_OUT_MAX, mc_nuclear.ms_outputs.m_max_T_salt_hot);	//[C]
