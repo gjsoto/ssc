@@ -197,18 +197,12 @@ void C_csp_nuclear_plant::off(const C_csp_weatherreader::S_outputs &weather,
 	// First call heliostat field class
 	// In OFF call, looking specifically for weather STOW parasitics apply
 
-	// Set collector/receiver parent class outputs from field model
-	//cr_out_report.m_eta_field = mc_pt_heliostatfield.ms_outputs.m_eta_field;				//[-]
-    //cr_out_report.m_sf_adjust_out = mc_pt_heliostatfield.ms_outputs.m_sf_adjust_out;
-	//cr_out_report.m_q_dot_field_inc = mc_pt_heliostatfield.ms_outputs.m_q_dot_field_inc;	//[MWt]
 	cr_out_solver.m_W_dot_col_tracking = 0.0;			//[MWe]
 
 	// Now, call the tower-receiver model
 	mc_nuclear.off(weather, htf_state_in, sim_info);
 
 	// Set collector/receiver parent class outputs from field model
-	//cr_out_report.m_q_dot_rec_inc = mc_heat_input.ms_outputs.m_q_dot_rec_inc;		 //[MWt]
-	//cr_out_report.m_eta_thermal = mc_heat_input.ms_outputs.m_eta_therm;				 //[-]
 	cr_out_solver.m_q_thermal = mc_nuclear.ms_outputs.m_Q_thermal;				 //[MW]
 	cr_out_solver.m_q_startup = mc_nuclear.ms_outputs.m_q_startup;				 //[MWt-hr]
 	//cr_out_report.m_q_dot_piping_loss = mc_heat_input.ms_outputs.m_q_dot_piping_loss; //[MWt]

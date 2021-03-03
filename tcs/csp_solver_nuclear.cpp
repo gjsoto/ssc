@@ -371,8 +371,35 @@ void C_nuclear::off(const C_csp_weatherreader::S_outputs &weather,
 
 void C_nuclear::converged()
 {
+	// Check HTF props?
+	//!MJW 9.8.2010 :: Call the property range check subroutine with the inlet and outlet HTF temps to make sure they're in the valid range
+	//call check_htf(Coolant,T_salt_hot)
+	//call check_htf(Coolant,T_salt_cold)
 
+	if( m_mode == C_csp_collector_receiver::STEADY_STATE )
+	{
+		throw(C_csp_exception("Receiver should only be run at STEADY STATE mode for estimating output. It must be run at a different mode before exiting a timestep",
+			"MSPT receiver converged method"));
+	}
+
+	if( m_mode == C_csp_collector_receiver::OFF )
+	{
+		m_E_su = m_q_rec_des * m_rec_qf_delay;
+		m_t_su = m_rec_su_delay;
+	}
+
+	m_mode_prev = m_mode;
+	m_E_su_prev = m_E_su;
+	m_t_su_prev = m_t_su;
+
+	m_itermode = 1;
+	m_od_control = 1.0;
+
+	m_ncall = -1;
+
+    ms_outputs = outputs;
 }
+
 
 void C_nuclear::calc_pump_performance(double rho_f, double mdot, double ffact, double &PresDrop_calc, double &WdotPump_calc)
 {
@@ -396,7 +423,31 @@ void C_nuclear::calc_pump_performance(double rho_f, double mdot, double ffact, d
 
 double C_nuclear::get_pumping_parasitic_coef()
 {
+    double Tavg = (m_T_htf_cold_des + m_T_htf_hot_des) / 2.;
 
+    double mu_coolant = field_htfProps.visc(Tavg);				//[kg/m-s] Absolute viscosity of the coolant
+    double k_coolant = field_htfProps.cond(Tavg);				//[W/m-K] Conductivity of the coolant
+    double rho_coolant = field_htfProps.dens(Tavg, 1.0);        //[kg/m^3] Density of the coolant
+    double c_p_coolant = field_htfProps.Cp(Tavg)*1e3;           //[J/kg-K] Specific heat
+
+    double m_dot_salt = m_q_dot_nuc_des / (c_p_coolant * (m_T_htf_hot_des - m_T_htf_cold_des));
+
+    double n_t = (int)(CSP::pi*m_d_rec / (m_od_tube));   // The number of tubes per panel, as a function of the number of panels and the desired diameter of the receiver
+    double id_tube = m_od_tube - 2 * m_th_tube;                 //[m] Inner diameter of receiver tube
+
+
+    double u_coolant = m_dot_salt / (n_t*rho_coolant*pow((id_tube / 2.0), 2)*CSP::pi);	//[m/s] Average velocity of the coolant through the receiver tubes
+    double Re_inner = rho_coolant * u_coolant*id_tube / mu_coolant;				        //[-] Reynolds number of internal flow
+    double Pr_inner = c_p_coolant * mu_coolant / k_coolant;						        //[-] Prandtl number of internal flow
+    double Nusselt_t, f;
+    double LoverD = m_h_rec / id_tube;
+    double RelRough = (4.5e-5) / id_tube;   //[-] Relative roughness of the tubes. http:www.efunda.com/formulae/fluids/roughness.cfm
+    CSP::PipeFlow(Re_inner, Pr_inner, LoverD, RelRough, Nusselt_t, f);
+
+    double deltap, wdot;
+    calc_pump_performance(rho_coolant, m_dot_salt, f, deltap, wdot);
+
+    return wdot / m_q_dot_nuc_des;
 }
 
 double C_nuclear::area_proj()
