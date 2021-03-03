@@ -357,7 +357,6 @@ void C_nuclear::call(const C_csp_weatherreader::S_outputs &weather,
 
     ms_outputs = outputs;
 
-
 }
 
 void C_nuclear::off(const C_csp_weatherreader::S_outputs &weather,
@@ -374,6 +373,22 @@ void C_nuclear::converged()
 
 void C_nuclear::calc_pump_performance(double rho_f, double mdot, double ffact, double &PresDrop_calc, double &WdotPump_calc)
 {
+    // Pressure drop calculations
+	double mpertube = mdot;
+	double u_coolant = mpertube / (rho_f * m_id_tube * m_id_tube * 0.25 * CSP::pi);	//[m/s] Average velocity of the coolant through the receiver tubes
+
+	double L_e_45 = 16.0;						// The equivalent length produced by the 45 degree bends in the tubes - Into to Fluid Mechanics, Fox et al.
+	double L_e_90 = 30.0;						// The equivalent length produced by the 90 degree bends in the tubes
+	double DELTAP_tube = rho_f*(ffact*m_h_rec / m_id_tube*pow(u_coolant, 2) / 2.0);	//[Pa] Pressure drop across the tube, straight length
+	double DELTAP_45 = rho_f*(ffact*L_e_45*pow(u_coolant, 2) / 2.0);					//[Pa] Pressure drop across 45 degree bends
+	double DELTAP_90 = rho_f*(ffact*L_e_90*pow(u_coolant, 2) / 2.0);					//[Pa] Pressure drop across 90 degree bends
+	double DELTAP = DELTAP_tube + 2 * DELTAP_45 + 4 * DELTAP_90;						//[Pa] Total pressure drop across the tube with (4) 90 degree bends, (2) 45 degree bends
+	double DELTAP_h_tower = rho_f*m_h_tower*CSP::grav;						//[Pa] The pressure drop from pumping up to the receiver
+	double DELTAP_net = DELTAP + DELTAP_h_tower;		//[Pa] The new pressure drop across the receiver panels
+	PresDrop_calc = DELTAP_net*1.E-6;			//[MPa]
+	double est_load = fmax(0.25, mdot / m_m_dot_htf_des) * 100;		//[%] Relative pump load. Limit to 25%
+	double eta_pump_adj = m_eta_pump*(-2.8825E-9*pow(est_load, 4) + 6.0231E-7*pow(est_load, 3) - 1.3867E-4*pow(est_load, 2) + 2.0683E-2*est_load);	//[-] Adjusted pump efficiency
+	WdotPump_calc = DELTAP_net*mdot / rho_f / eta_pump_adj;
 
 }
 

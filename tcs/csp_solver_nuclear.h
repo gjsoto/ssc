@@ -64,6 +64,7 @@ public:
 	int m_n_panels;					//[-]
 	double m_d_rec;					//[m]
 	double m_h_rec;					//[m]
+    double m_id_tube;
 
     double m_A_sf;                  //[m2] "solar field" area, should delete this later
     
