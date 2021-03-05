@@ -61,7 +61,6 @@ public:
 	double m_od_control;			//[-] Additional defocusing for over-design conditions
 	double m_tol_od;		        //[-] Tolerance for over-design iteration
 
-	int m_n_panels;					//[-]
 	double m_d_rec;					//[m]
 	double m_h_rec;					//[m]
     double m_id_tube;

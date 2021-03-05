@@ -2021,6 +2021,16 @@ public:
         nuclear_island->m_T_htf_cold_des = as_double("T_htf_cold_des");           //[C] 
         nuclear_island->m_A_sf = as_double("A_sf");  
         nuclear_island->m_q_dot_nuc_des = as_double("q_dot_nuclear_des");
+        nuclear_island->m_od_tube = as_double("d_tube_out");
+        nuclear_island->m_th_tube = as_double("th_tube");
+        nuclear_island->m_mat_tube = as_integer("mat_tube");
+        nuclear_island->m_field_fl = as_integer("rec_htf");
+        nuclear_island->m_T_salt_hot_target = as_double("T_htf_hot_des");
+        nuclear_island->m_mode_initial = C_csp_collector_receiver::ON;
+        nuclear_island->m_m_dot_htf_max_frac = as_double("csp.pt.rec.max_oper_frac");
+        nuclear_island->m_eta_pump = as_double("eta_pump");        
+        nuclear_island->m_h_tower = as_double("h_tower");
+        nuclear_island->m_epsilon = as_double("epsilon");
 
         C_csp_nuclear_plant heating_plant(*nuclear_island);
 

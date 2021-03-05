@@ -63,6 +63,13 @@ void C_nuclear::init()
 	m_tol_od = 0.001;		//[-] Tolerance for over-design iteration
 
     set_material_properties();
+    
+    double c_htf_des = field_htfProps.Cp((m_T_htf_hot_des + m_T_htf_cold_des) / 2.0)*1000.0;		//[J/kg-K] Specific heat at design conditions
+	m_m_dot_htf_des = m_q_dot_nuc_des / (c_htf_des*(m_T_htf_hot_des - m_T_htf_cold_des));					//[kg/s]
+	m_q_dot_inc_min = m_q_dot_nuc_des * m_f_rec_min ;	//[W] Minimum receiver thermal power
+    
+    m_m_dot_htf_max = m_m_dot_htf_max_frac * m_m_dot_htf_des;	//[kg/s]
+
 }
 
 void C_nuclear::set_material_properties()
@@ -418,7 +425,6 @@ void C_nuclear::calc_pump_performance(double rho_f, double mdot, double ffact, d
 	double est_load = fmax(0.25, mdot / m_m_dot_htf_des) * 100;		//[%] Relative pump load. Limit to 25%
 	double eta_pump_adj = m_eta_pump*(-2.8825E-9*pow(est_load, 4) + 6.0231E-7*pow(est_load, 3) - 1.3867E-4*pow(est_load, 2) + 2.0683E-2*est_load);	//[-] Adjusted pump efficiency
 	WdotPump_calc = DELTAP_net*mdot / rho_f / eta_pump_adj;
-
 }
 
 double C_nuclear::get_pumping_parasitic_coef()
@@ -801,8 +807,7 @@ void C_nuclear::calculate_steady_state_soln(s_steady_state_soln &soln, double to
 		soln.T_s = T_s_guess;
 		soln.T_panel_out = T_panel_out_guess;
 		soln.T_panel_in = T_panel_in_guess;
-		for (int i = 0; i < m_n_panels; i++)
-			soln.T_panel_ave = (soln.T_panel_in + soln.T_panel_out) / 2.0;
+		soln.T_panel_ave = (soln.T_panel_in + soln.T_panel_out) / 2.0;
 	}
 
 	return;
