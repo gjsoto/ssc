@@ -3024,7 +3024,7 @@ public:
         heliostatfield.get_converged(b_is_field_tracking_final);
         ssc_number_t is_field_tracking_final = (bool)b_is_field_tracking_final;
         assign("is_field_tracking_final", is_field_tracking_final);
-
+        */
             // Receiver
         C_csp_collector_receiver::E_csp_cr_modes rec_op_mode_final;
         double rec_startup_time_remain_final, rec_startup_energy_remain_final;
@@ -3056,7 +3056,7 @@ public:
         assign("T_tank_cold_final", (ssc_number_t)(T_cold_tank_final - 273.15));
         assign("T_tank_hot_final", (ssc_number_t)(T_hot_tank_final - 273.15));
         assign("hot_tank_htf_percent_final", (ssc_number_t)(f_V_hot_final * 100.0));
-        */
+        
     }
 };
 

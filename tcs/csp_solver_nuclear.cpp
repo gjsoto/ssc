@@ -61,6 +61,11 @@ void C_nuclear::init()
 	m_itermode = 1;			//[-] 1: Solve for design temp, 2: solve to match mass flow restriction
 	m_od_control = 1.0;			//[-] Additional defocusing for over-design conditions
 	m_tol_od = 0.001;		//[-] Tolerance for over-design iteration
+    
+    m_m_mixed = 3.2;
+    m_LoverD = m_h_rec / m_id_tube;
+	m_RelRough = (4.5e-5) / m_id_tube;	//[-] Relative roughness of the tubes. http:www.efunda.com/formulae/fluids/roughness.cfm
+
 
     set_material_properties();
     
@@ -412,7 +417,8 @@ void C_nuclear::calc_pump_performance(double rho_f, double mdot, double ffact, d
 {
     // Pressure drop calculations
 	double u_coolant = mdot / (rho_f * m_id_tube * m_id_tube * 0.25 * CSP::pi);	//[m/s] Average velocity of the coolant through the receiver tubes
-
+    
+    double fudge = 0;
 	double L_e_45 = 16.0;						// The equivalent length produced by the 45 degree bends in the tubes - Into to Fluid Mechanics, Fox et al.
 	double L_e_90 = 30.0;						// The equivalent length produced by the 90 degree bends in the tubes
 	double DELTAP_tube = rho_f*(ffact*m_h_rec / m_id_tube*pow(u_coolant, 2) / 2.0);	//[Pa] Pressure drop across the tube, straight length
@@ -420,7 +426,7 @@ void C_nuclear::calc_pump_performance(double rho_f, double mdot, double ffact, d
 	double DELTAP_90 = rho_f*(ffact*L_e_90*pow(u_coolant, 2) / 2.0);					//[Pa] Pressure drop across 90 degree bends
 	double DELTAP = DELTAP_tube + 2 * DELTAP_45 + 4 * DELTAP_90;						//[Pa] Total pressure drop across the tube with (4) 90 degree bends, (2) 45 degree bends
 	double DELTAP_h_tower = rho_f*m_h_tower*CSP::grav;						//[Pa] The pressure drop from pumping up to the receiver
-	double DELTAP_net = DELTAP + DELTAP_h_tower;		//[Pa] The new pressure drop across the receiver panels
+	double DELTAP_net = fudge * (DELTAP + DELTAP_h_tower);		//[Pa] The new pressure drop across the receiver panels
 	PresDrop_calc = DELTAP_net*1.E-6;			//[MPa]
 	double est_load = fmax(0.25, mdot / m_m_dot_htf_des) * 100;		//[%] Relative pump load. Limit to 25%
 	double eta_pump_adj = m_eta_pump*(-2.8825E-9*pow(est_load, 4) + 6.0231E-7*pow(est_load, 3) - 1.3867E-4*pow(est_load, 2) + 2.0683E-2*est_load);	//[-] Adjusted pump efficiency
@@ -668,7 +674,7 @@ void C_nuclear::calculate_steady_state_soln(s_steady_state_soln &soln, double to
 		// Calculate the average surface temperature
 		double T_film_ave = (T_amb + T_salt_hot_guess) / 2.0;
 
-        /*
+        
 		// Convective coefficient for external forced convection using Siebers & Kraabel
 		double k_film = ambient_air.cond(T_film_ave);				//[W/m-K] The conductivity of the ambient air
 		double mu_film = ambient_air.visc(T_film_ave);				//[kg/m-s] Dynamic viscosity of the ambient air
@@ -687,13 +693,13 @@ void C_nuclear::calculate_steady_state_soln(s_steady_state_soln &soln, double to
         //====== Here there was a loop. 
         
         // Natural convection
-        double Gr_nat = fmax(0.0, CSP::grav*beta*(soln.T_s.at(i_fp) - T_amb)*pow(m_h_rec, 3) / pow(nu_amb, 2));	//[-] Grashof Number at ambient conditions
-        double Nusselt_nat = 0.098*pow(Gr_nat, (1.0 / 3.0))*pow(soln.T_s.at(i_fp) / T_amb, -0.14);				//[-] Nusselt number
+        double Gr_nat = fmax(0.0, CSP::grav*beta*(soln.T_s - T_amb)*pow(m_h_rec, 3) / pow(nu_amb, 2));	//[-] Grashof Number at ambient conditions
+        double Nusselt_nat = 0.098*pow(Gr_nat, (1.0 / 3.0))*pow(soln.T_s / T_amb, -0.14);				//[-] Nusselt number
         double h_nat = Nusselt_nat * ambient_air.cond(T_amb) / m_h_rec * m_hl_ffact;							//[W/m^-K] Natural convection coefficient
 
         // Mixed convection
         double h_mixed = pow((pow(h_for, m_m_mixed) + pow(h_nat, m_m_mixed)), 1.0 / m_m_mixed)*4.0;		//(4.0) is a correction factor to match convection losses at Solar II (correspondance with G. Kolb, SNL)
-        */
+        
         
         soln.q_dot_conv = 0.0;			//[W] Convection losses per node
 
@@ -702,7 +708,7 @@ void C_nuclear::calculate_steady_state_soln(s_steady_state_soln &soln, double to
         soln.q_dot_loss = soln.q_dot_rad + soln.q_dot_conv;			//[W] Total overall losses per node
         soln.q_dot_abs = soln.q_dot_inc - soln.q_dot_loss;			//[W] Absorbed flux at each node
         
-        /*
+        
         // Calculate the temperature drop across the receiver tube wall... assume a cylindrical thermal resistance
         double T_wall = (soln.T_s + soln.T_panel_ave) / 2.0;				//[K] The temperature at which the conductivity of the wall is evaluated
         double k_tube = tube_material.cond(T_wall);											//[W/m-K] The conductivity of the wall
@@ -724,11 +730,11 @@ void C_nuclear::calculate_steady_state_soln(s_steady_state_soln &soln, double to
             break;
         }
         double h_inner = Nusselt_t * k_coolant / m_id_tube;								//[W/m^2-K] Convective coefficient between the inner tube wall and the coolant
-        double R_conv_inner = 1.0 / (h_inner*CSP::pi*m_id_tube / 2.0*m_h_rec*m_n_t);	//[K/W] Thermal resistance associated with this value
+        double R_conv_inner = 1.0 / (h_inner*CSP::pi*m_id_tube / 2.0*m_h_rec);	//[K/W] Thermal resistance associated with this value
 
         soln.u_salt = u_coolant;
         soln.f = f;
-        */
+        
         
         // Update panel inlet/outlet temperature guess
         T_panel_in_guess = soln.T_salt_cold_in;

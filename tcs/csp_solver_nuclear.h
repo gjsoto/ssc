@@ -66,6 +66,11 @@ public:
     double m_id_tube;
 	double m_od_tube;			//[mm] 
 	double m_th_tube;			//[mm] 
+    
+    double m_hl_ffact;				//[-]
+    double m_m_mixed;
+	double m_LoverD;
+	double m_RelRough;
 
     double m_A_sf;                  //[m2] "solar field" area, should delete this later
     
