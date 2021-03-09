@@ -72,7 +72,7 @@ public:
 
     C_csp_reported_outputs mc_reported_outputs;
 	
-	C_csp_nuclear_plant(C_nuclear & nuclear);
+	C_csp_nuclear_plant(C_nuclear & nuclear); //constructor only uses nuclear class, no heliostatfield
 
 	~C_csp_nuclear_plant();
 
@@ -91,20 +91,20 @@ public:
 
     virtual void off(const C_csp_weatherreader::S_outputs &weather,
 		const C_csp_solver_htf_1state &htf_state_in,
-		C_csp_collector_receiver::S_csp_cr_out_solver &cr_out_solver,
+		C_csp_collector_receiver::S_csp_cr_out_solver &nuc_out_solver,
 		//C_csp_collector_receiver::S_csp_cr_out_report &cr_out_report,
 		const C_csp_solver_sim_info &sim_info);
 
 	virtual void startup(const C_csp_weatherreader::S_outputs &weather,
 		const C_csp_solver_htf_1state &htf_state_in,
-		C_csp_collector_receiver::S_csp_cr_out_solver &cr_out_solver,
+		C_csp_collector_receiver::S_csp_cr_out_solver &nuc_out_solver,
 		//C_csp_collector_receiver::S_csp_cr_out_report &cr_out_report,
 		const C_csp_solver_sim_info &sim_info);
 
 	virtual void on(const C_csp_weatherreader::S_outputs &weather,
 		const C_csp_solver_htf_1state &htf_state_in,
-		double field_control,
-		C_csp_collector_receiver::S_csp_cr_out_solver &cr_out_solver,
+		double nuclear_control,
+		C_csp_collector_receiver::S_csp_cr_out_solver &nuc_out_solver,
 		//C_csp_collector_receiver::S_csp_cr_out_report &cr_out_report,
 		const C_csp_solver_sim_info &sim_info);
 
@@ -122,13 +122,13 @@ public:
   
     virtual double calculate_thermal_efficiency_approx( const C_csp_weatherreader::S_outputs &weather, double q_incident /*MW*/ );
 
-    virtual double get_collector_area();
+    virtual double get_collector_area(); // doesn't do anything, returns arbitary number
 
 
 	void call(const C_csp_weatherreader::S_outputs &weather,
 		const C_csp_solver_htf_1state &htf_state_in,
 		const C_csp_collector_receiver::S_csp_cr_inputs &inputs,
-		C_csp_collector_receiver::S_csp_cr_out_solver &cr_out_solver,
+		C_csp_collector_receiver::S_csp_cr_out_solver &nuc_out_solver,
 		//C_csp_collector_receiver::S_csp_cr_out_report &cr_out_report,
 		const C_csp_solver_sim_info &sim_info);
 
