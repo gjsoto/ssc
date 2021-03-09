@@ -2029,6 +2029,7 @@ public:
         nuclear_island->m_m_dot_htf_max_frac = as_double("csp.pt.rec.max_oper_frac");  //[-] max m_dot as fraction of desired 
         nuclear_island->m_eta_pump = as_double("eta_pump");                            //[-] efficiency of the pump -- for CSP would pump up the receiver tower, here is not as strained 
         nuclear_island->m_h_tower = as_double("h_tower");                              //[m] height of "receiver" tower -- used for pumping and flow speeds
+        nuclear_island->m_h_rec   = as_double("rec_height");                           //[m] height of "receiver" tower -- used for pumping and flow speeds
         nuclear_island->m_epsilon = as_double("epsilon");                              //[-] efficiency of heat source -- usually set to 1 for our case
 
         // previously, this was a 'collector_receiver' object derived from the 
