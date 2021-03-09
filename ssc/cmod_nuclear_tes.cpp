@@ -38,12 +38,11 @@ OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "csp_solver_mspt_receiver_222.h"
 #include "csp_solver_mspt_receiver.h"
 #include "csp_solver_mspt_collector_receiver.h"
-#include "csp_solver_heating_plant_designator.h" // might delete later
 #include "csp_solver_pc_Rankine_indirect_224.h"
 #include "csp_solver_pc_sco2.h"
 #include "csp_solver_two_tank_tes.h"
 #include "csp_solver_tou_block_schedules.h"
-#include "csp_solver_nuclear.h"                  // might delete later
+#include "csp_solver_nuclear.h"
 #include "csp_solver_nuclear_plant.h"
 
 #include "csp_system_costs.h"
@@ -2017,25 +2016,27 @@ public:
         
         // Make distinction between using collector receiver vs. nuclear plant
         std::unique_ptr<C_nuclear> nuclear_island = std::unique_ptr<C_nuclear>(new C_nuclear());
-        nuclear_island->m_T_htf_hot_des = as_double("T_htf_hot_des");             //[C]
-        nuclear_island->m_T_htf_cold_des = as_double("T_htf_cold_des");           //[C] 
-        nuclear_island->m_A_sf = as_double("A_sf");  
-        nuclear_island->m_q_dot_nuc_des = as_double("q_dot_nuclear_des");
-        nuclear_island->m_od_tube = as_double("d_tube_out");
-        nuclear_island->m_th_tube = as_double("th_tube");
-        nuclear_island->m_mat_tube = as_integer("mat_tube");
-        nuclear_island->m_field_fl = as_integer("rec_htf");
-        nuclear_island->m_T_salt_hot_target = as_double("T_htf_hot_des");
-        nuclear_island->m_mode_initial = C_csp_collector_receiver::ON;
-        nuclear_island->m_m_dot_htf_max_frac = as_double("csp.pt.rec.max_oper_frac");
-        nuclear_island->m_eta_pump = as_double("eta_pump");        
-        nuclear_island->m_h_tower = as_double("h_tower");
-        nuclear_island->m_epsilon = as_double("epsilon");
+        nuclear_island->m_T_htf_hot_des = as_double("T_htf_hot_des");                  //[C] desired hot HTF temperature (currently the salt)
+        nuclear_island->m_T_htf_cold_des = as_double("T_htf_cold_des");                //[C] desired cold HTF temperature (currently the salt)
+        nuclear_island->m_A_sf = as_double("A_sf");                                    //[m2] unnecessary attribute
+        nuclear_island->m_q_dot_nuc_des = as_double("q_dot_nuclear_des");              //[MWt] nuclear thermal output (including losses)
+        nuclear_island->m_od_tube = as_double("d_tube_out");                           //[mm] outer diameter of tube -- this is the tube holding molten salt, in CSP assumed to be numerous, here only 1
+        nuclear_island->m_th_tube = as_double("th_tube");                              //[mm] thickness of tube holding HTF
+        nuclear_island->m_mat_tube = as_integer("mat_tube");                           //(int) integer designating material for tube
+        nuclear_island->m_field_fl = as_integer("rec_htf");                            //(int) integer designating HTF material (in our case 17 == our salt)
+        nuclear_island->m_T_salt_hot_target = as_double("T_htf_hot_des");              //[C] target hot salt temperature, initialized to desired temp
+        nuclear_island->m_mode_initial = C_csp_collector_receiver::ON;                 //[-] nuclear plant starts in ON mode
+        nuclear_island->m_m_dot_htf_max_frac = as_double("csp.pt.rec.max_oper_frac");  //[-] max m_dot as fraction of desired 
+        nuclear_island->m_eta_pump = as_double("eta_pump");                            //[-] efficiency of the pump -- for CSP would pump up the receiver tower, here is not as strained 
+        nuclear_island->m_h_tower = as_double("h_tower");                              //[m] height of "receiver" tower -- used for pumping and flow speeds
+        nuclear_island->m_epsilon = as_double("epsilon");                              //[-] efficiency of heat source -- usually set to 1 for our case
 
+        // previously, this was a 'collector_receiver' object derived from the 
+        //   `mspt_collector_receiver` class taking in a `receiver` and `heliostatfield` object as inputs.
+        // here, I renamed 'collector_receiver' to 'heating_plant' to be more general and the object is now derived from
+        //   new `nuclear_plant` class that holds generic methods that interact nicely with `csp_solver`
         C_csp_nuclear_plant heating_plant(*nuclear_island);
 
-        // Then try init() call here, which should call inits from both classes
-        //collector_receiver.init();
 
         // *******************************************************
         // *******************************************************
@@ -2145,8 +2146,8 @@ public:
         tou.mc_dispatch_params.m_dispatch_optimize = as_boolean("is_dispatch");
         tou.mc_dispatch_params.m_is_write_ampl_dat = as_boolean("is_write_ampl_dat");
         tou.mc_dispatch_params.m_is_ampl_engine = as_boolean("is_ampl_engine");
-        tou.mc_dispatch_params.m_is_bash_call = as_boolean("is_bash_call");
-        tou.mc_dispatch_params.m_is_python_call = as_boolean("is_python_call");
+        tou.mc_dispatch_params.m_is_bash_call = as_boolean("is_bash_call");      // in dispatch::optimize_ampl, are we calling a bash script?
+        tou.mc_dispatch_params.m_is_python_call = as_boolean("is_python_call");  // in dispatch::optimize_ampl, are we calling a python script?
         tou.mc_dispatch_params.m_ampl_data_dir = as_string("ampl_data_dir");
         tou.mc_dispatch_params.m_ampl_exec_call = as_string("ampl_exec_call");
         tou.mc_dispatch_params.m_ampl_thread_id = as_string("ampl_thread_id");
@@ -3025,6 +3026,8 @@ public:
         ssc_number_t is_field_tracking_final = (bool)b_is_field_tracking_final;
         assign("is_field_tracking_final", is_field_tracking_final);
         */
+
+        // I have uncommented the code below, seems useful for doing subsequent SSC calls
             // Receiver
         C_csp_collector_receiver::E_csp_cr_modes rec_op_mode_final;
         double rec_startup_time_remain_final, rec_startup_energy_remain_final;
