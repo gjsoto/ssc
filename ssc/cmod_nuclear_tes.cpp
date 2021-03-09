@@ -2018,7 +2018,7 @@ public:
         std::unique_ptr<C_nuclear> nuclear_island = std::unique_ptr<C_nuclear>(new C_nuclear());
         nuclear_island->m_T_htf_hot_des = as_double("T_htf_hot_des");                  //[C] desired hot HTF temperature (currently the salt)
         nuclear_island->m_T_htf_cold_des = as_double("T_htf_cold_des");                //[C] desired cold HTF temperature (currently the salt)
-        nuclear_island->m_A_sf = as_double("A_sf");                                    //[m2] unnecessary attribute, set to arbitrary value in constructor but can be overloaded
+        nuclear_island->m_A_nuc = as_double("A_sf");                                   //[m2] unnecessary attribute, set to arbitrary value in constructor but can be overloaded
         nuclear_island->m_q_dot_nuc_des = as_double("q_dot_nuclear_des");              //[MWt] nuclear thermal output (including losses)
         nuclear_island->m_od_tube = as_double("d_tube_out");                           //[mm] outer diameter of tube -- this is the tube holding molten salt, in CSP assumed to be numerous, here only 1
         nuclear_island->m_th_tube = as_double("th_tube");                              //[mm] thickness of tube holding HTF

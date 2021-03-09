@@ -28,20 +28,59 @@ OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 C_nuclear::C_nuclear()
 {
-    m_ncall = -1;
-    m_itermode = -1;
-    
-    m_dummy_area = 42.0;
-    m_mode_initial = C_csp_collector_receiver::E_csp_cr_modes::ON;
-    m_mode = C_csp_collector_receiver::E_csp_cr_modes::ON;
-    m_mode_prev = C_csp_collector_receiver::E_csp_cr_modes::ON;
-    
-    m_T_salt_hot_target = std::numeric_limits<double>::quiet_NaN();   
-    m_m_dot_htf_max     = std::numeric_limits<double>::quiet_NaN();
-    m_od_control        = std::numeric_limits<double>::quiet_NaN();
+	// Counters
+    m_ncall    = -1;                
+    m_itermode = -1;             
 
-    m_nuclear_su_delay = 0.0;
-    m_nuclear_qf_delay = 0.0;
+	// Data
+    m_A_nuc             = 42.0;                                           
+    m_q_dot_nuc_des     = std::numeric_limits<double>::quiet_NaN();  
+    m_T_salt_hot_target = std::numeric_limits<double>::quiet_NaN();	  
+    m_m_dot_htf_max     = std::numeric_limits<double>::quiet_NaN();		    
+    
+	// Panel temperatures
+    m_T_s         = std::numeric_limits<double>::quiet_NaN();
+	m_T_panel_in  = std::numeric_limits<double>::quiet_NaN();
+	m_T_panel_out = std::numeric_limits<double>::quiet_NaN();
+	m_T_panel_ave = std::numeric_limits<double>::quiet_NaN();
+
+	// Heat transfer 
+	m_q_dot_conv = std::numeric_limits<double>::quiet_NaN();
+	m_q_dot_rad  = std::numeric_limits<double>::quiet_NaN();
+	m_q_dot_loss = std::numeric_limits<double>::quiet_NaN();
+	m_q_dot_abs  = std::numeric_limits<double>::quiet_NaN();
+	m_q_dot_inc  = std::numeric_limits<double>::quiet_NaN();
+    
+	// Over-design control
+	m_od_control = std::numeric_limits<double>::quiet_NaN();
+	m_tol_od     = std::numeric_limits<double>::quiet_NaN();
+
+	// Measurements for "Tower" and HTF
+	m_d_rec   = std::numeric_limits<double>::quiet_NaN();
+	m_h_rec   = std::numeric_limits<double>::quiet_NaN();
+	m_id_tube = std::numeric_limits<double>::quiet_NaN();
+	m_od_tube = std::numeric_limits<double>::quiet_NaN();
+	m_th_tube = std::numeric_limits<double>::quiet_NaN();
+    
+	// Convection coefficients for pipe flow
+    m_hl_ffact = std::numeric_limits<double>::quiet_NaN();
+	m_m_mixed  = std::numeric_limits<double>::quiet_NaN();
+	m_LoverD   = std::numeric_limits<double>::quiet_NaN();
+	m_RelRough = std::numeric_limits<double>::quiet_NaN();
+	
+	// Materials
+    m_field_fl = std::numeric_limits<double>::quiet_NaN();
+	m_mat_tube = std::numeric_limits<double>::quiet_NaN();
+    
+	// Startup attributes
+    m_mode_initial = C_csp_collector_receiver::E_csp_cr_modes::ON;
+    m_mode         = C_csp_collector_receiver::E_csp_cr_modes::ON;
+    m_mode_prev    = C_csp_collector_receiver::E_csp_cr_modes::ON;
+    m_E_su_init = std::numeric_limits<double>::quiet_NaN();
+	m_t_su_init = std::numeric_limits<double>::quiet_NaN();
+	m_nuclear_su_delay = std::numeric_limits<double>::quiet_NaN();
+	m_nuclear_qf_delay = std::numeric_limits<double>::quiet_NaN();
+
     
 }
 
@@ -52,25 +91,25 @@ void C_nuclear::init()
 	m_th_tube /= 1.E3;			//[m] Convert from input in [mm]
 	m_T_htf_hot_des += 273.15;	//[K] Convert from input in [C]
 	m_T_htf_cold_des += 273.15;	//[K] Convert from input in [C]
-	m_q_dot_nuc_des *= 1.E6;	    //[W] Convert from input in [MW] 
+	m_q_dot_nuc_des *= 1.E6;	//[W] Convert from input in [MW] 
 
-    m_T_salt_hot_target += 273.15;	//[K] Convert from input in [C]   
-    m_id_tube = m_od_tube - 2 * m_th_tube;			//[m] Inner diameter of receiver tube
+    m_T_salt_hot_target += 273.15;	         //[K] Convert from input in [C]   
+    m_id_tube = m_od_tube - 2 * m_th_tube;   //[m] Inner diameter of receiver tube
     
-    m_mode = m_mode_initial;					//[-] 0 = requires startup, 1 = starting up, 2 = running
-	m_itermode = 1;			//[-] 1: Solve for design temp, 2: solve to match mass flow restriction
+    m_mode = m_mode_initial;	//[-] 0 = requires startup, 1 = starting up, 2 = running
+	m_itermode = 1;			    //[-] 1: Solve for design temp, 2: solve to match mass flow restriction
 	m_od_control = 1.0;			//[-] Additional defocusing for over-design conditions
-	m_tol_od = 0.001;		//[-] Tolerance for over-design iteration
+	m_tol_od = 0.001;		    //[-] Tolerance for over-design iteration
     
     m_m_mixed = 3.2;
     m_LoverD = m_h_rec / m_id_tube;
 	m_RelRough = (4.5e-5) / m_id_tube;	//[-] Relative roughness of the tubes. http:www.efunda.com/formulae/fluids/roughness.cfm
 
-
+	// moved material properties initialization to new method
     set_material_properties();
     
     double c_htf_des = field_htfProps.Cp((m_T_htf_hot_des + m_T_htf_cold_des) / 2.0)*1000.0;		//[J/kg-K] Specific heat at design conditions
-	m_m_dot_htf_des = m_q_dot_nuc_des / (c_htf_des*(m_T_htf_hot_des - m_T_htf_cold_des));					//[kg/s]
+	m_m_dot_htf_des = m_q_dot_nuc_des / (c_htf_des*(m_T_htf_hot_des - m_T_htf_cold_des));		    //[kg/s]
 	m_q_dot_inc_min = m_q_dot_nuc_des * m_f_rec_min ;	//[W] Minimum receiver thermal power
     
     m_m_dot_htf_max = m_m_dot_htf_max_frac * m_m_dot_htf_des;	//[kg/s]
@@ -151,15 +190,15 @@ void C_nuclear::call(const C_csp_weatherreader::S_outputs &weather,
 	// Converge() sets it to -1, so on first call this line will adjust it = 0
 	m_ncall++;
 	
-    // When this function is called from TCS solver, input_operation_mode should always be == 2
+    // Operation mode should be set to ON
 	C_csp_collector_receiver::E_csp_cr_modes input_operation_mode = inputs.m_input_operation_mode;
 
 	// Get sim info 
-	double step = sim_info.ms_ts.m_step;			//[s]
+	double step = sim_info.ms_ts.m_step;	//[s]
 	double time = sim_info.ms_ts.m_time;	//[s]
 
 	// Get applicable htf state info
-	double T_salt_cold_in = htf_state_in.m_temp;		//[C]
+	double T_salt_cold_in = htf_state_in.m_temp;   //[C]
 
 	// Complete necessary conversions/calculations of input variables
 	T_salt_cold_in += 273.15;				//[K] Cold salt inlet temp, convert from C
@@ -173,7 +212,7 @@ void C_nuclear::call(const C_csp_weatherreader::S_outputs &weather,
 	double zenith = weather.m_solzen;
 	double azimuth = weather.m_solazi;
 	double v_wind_10 = weather.m_wspd;
-	double I_bn = 1000;
+	double I_bn = 1000; // setting this to a positive constant
 
 	double T_sky = CSP::skytemp(T_amb, T_dp, hour);
 
@@ -210,7 +249,7 @@ void C_nuclear::call(const C_csp_weatherreader::S_outputs &weather,
 	}
     
 	// Initialize steady state solutions with current weather, DNI, field efficiency, and inlet conditions
-	s_steady_state_soln soln;
+	s_steady_state_soln soln; // removed clearsky solution, not necessary
 	soln.hour = time / 3600.0;
 	soln.T_amb = weather.m_tdry + 273.15;
 	soln.T_dp = weather.m_tdew + 273.15;
@@ -222,9 +261,10 @@ void C_nuclear::call(const C_csp_weatherreader::S_outputs &weather,
 	soln.od_control = m_od_control;         // Initial defocus control (may be adjusted during the solution)
     soln.mode = input_operation_mode;
     soln.itermode = m_itermode;
-	soln.nuc_is_off = nuc_is_off;
+	soln.nuc_is_off = nuc_is_off; // renamed 'rec' to 'nuc'
     
     //--- Solve for mass flow at actual and/or clear-sky DNI extremes
+	// only doing one calculation, no need to go through clearsky
     if (use_previous_solution(soln, m_mflow_soln_prev))  // Same conditions were solved in the previous call to this method
         soln = m_mflow_soln_prev;
     else
@@ -233,6 +273,7 @@ void C_nuclear::call(const C_csp_weatherreader::S_outputs &weather,
     m_mflow_soln_prev = soln;
 
     //--- Set mass flow and calculate final solution
+	// removed clearsky calls, not relevant to nuclear plant
     soln.q_dot_inc = m_q_dot_nuc_des;  // Absorbed flux profiles at actual DNI and clear-sky defocus
     calculate_steady_state_soln(soln, 0.00025);  // Solve energy balances at clearsky mass flow rate and actual DNI conditions
 
@@ -344,22 +385,22 @@ void C_nuclear::call(const C_csp_weatherreader::S_outputs &weather,
 	}
     
 	outputs.m_m_dot_salt_tot = m_dot_salt_tot*3600.0;		//[kg/hr] convert from kg/s
-	outputs.m_eta_therm = eta_therm;							//[-] RECEIVER thermal efficiency (includes radiation and convective losses. reflection losses are contained in receiver flux model)
-	outputs.m_W_dot_pump = W_dot_pump / 1.E6;				//[MW] convert from W
-	outputs.m_q_conv_sum = q_conv_sum / 1.E6;				//[MW] convert from W
-	outputs.m_q_rad_sum = q_rad_sum / 1.E6;					//[MW] convert from W
-	outputs.m_Q_thermal = q_thermal / 1.E6;					//[MW] convert from W
-	outputs.m_T_salt_hot = T_salt_hot - 273.15;				//[C] convert from K
-    outputs.m_T_salt_hot_rec = T_salt_hot_rec - 273.15;     // [C] convert from K[-]
+	outputs.m_eta_therm      = eta_therm;					//[-] RECEIVER thermal efficiency (includes radiation and convective losses. reflection losses are contained in receiver flux model)
+	outputs.m_W_dot_pump     = W_dot_pump / 1.E6;			//[MW] convert from W
+	outputs.m_q_conv_sum     = q_conv_sum / 1.E6;			//[MW] convert from W
+	outputs.m_q_rad_sum      = q_rad_sum / 1.E6;			//[MW] convert from W
+	outputs.m_Q_thermal      = q_thermal / 1.E6;			//[MW] convert from W
+	outputs.m_T_salt_hot     = T_salt_hot - 273.15;			//[C] convert from K
+    outputs.m_T_salt_hot_rec = T_salt_hot_rec - 273.15;     //[C] convert from K[-]
 	outputs.m_component_defocus = m_od_control;				//[-]
 	outputs.m_q_dot_rec_inc = q_dot_inc_sum / 1.E6;			//[MW] convert from W
-	outputs.m_q_startup = q_startup/1.E6;					//[MW-hr] convert from W-hr
-	outputs.m_dP_receiver = DELTAP/ 1.E5;	//[bar] receiver pressure drop, convert from Pa
-	outputs.m_dP_total = Pres_D*10.0;						//[bar] total pressure drop, convert from MPa
-	outputs.m_vel_htf = u_coolant;							//[m/s]
-	outputs.m_T_salt_cold = T_salt_cold_in - 273.15;			//[C] convert from K
-	outputs.m_m_dot_ss = m_dot_salt_tot_ss*3600.0;			//[kg/hr] convert from kg/s
-	outputs.m_q_dot_ss = q_thermal_ss / 1.E6;				//[MW] convert from W
+	outputs.m_q_startup     = q_startup/1.E6;				//[MW-hr] convert from W-hr
+	outputs.m_dP_receiver   = DELTAP/ 1.E5;					//[bar] receiver pressure drop, convert from Pa
+	outputs.m_dP_total      = Pres_D*10.0;					//[bar] total pressure drop, convert from MPa
+	outputs.m_vel_htf       = u_coolant;					//[m/s]
+	outputs.m_T_salt_cold   = T_salt_cold_in - 273.15;		//[C] convert from K
+	outputs.m_m_dot_ss      = m_dot_salt_tot_ss*3600.0;		//[kg/hr] convert from kg/s
+	outputs.m_q_dot_ss      = q_thermal_ss / 1.E6;			//[MW] convert from W
 	outputs.m_time_required_su = time_required_su*3600.0;	//[s], convert from hr in code
 	if(q_thermal > 0.0)
 		outputs.m_q_dot_piping_loss = q_dot_piping_loss/1.E6;	//[MWt]
@@ -378,7 +419,7 @@ void C_nuclear::off(const C_csp_weatherreader::S_outputs &weather,
 	const C_csp_solver_htf_1state &htf_state_in,
 	const C_csp_solver_sim_info &sim_info)
 {
-    
+    throw(C_csp_exception("OFF mode not allowed.", "Nuclear Island"));
 }
 
 void C_nuclear::converged()
@@ -418,7 +459,7 @@ void C_nuclear::calc_pump_performance(double rho_f, double mdot, double ffact, d
     // Pressure drop calculations
 	double u_coolant = mdot / (rho_f * m_id_tube * m_id_tube * 0.25 * CSP::pi);	//[m/s] Average velocity of the coolant through the receiver tubes
     
-    double fudge = 0;
+    double fudge = 0;      // factor I set up to set all of this to 0... need more elegant way
 	double L_e_45 = 16.0;						// The equivalent length produced by the 45 degree bends in the tubes - Into to Fluid Mechanics, Fox et al.
 	double L_e_90 = 30.0;						// The equivalent length produced by the 90 degree bends in the tubes
 	double DELTAP_tube = rho_f*(ffact*m_h_rec / m_id_tube*pow(u_coolant, 2) / 2.0);	//[Pa] Pressure drop across the tube, straight length
@@ -464,7 +505,7 @@ double C_nuclear::get_pumping_parasitic_coef()
 
 double C_nuclear::area_proj()
 {
-    return m_A_sf; //[m^2] projected or aperture area of the receiver
+    return m_A_nuc; //[m^2] projected or aperture area of the receiver
 }
 
 bool C_nuclear::use_previous_solution(const s_steady_state_soln& soln, const s_steady_state_soln& soln_prev)
@@ -630,6 +671,7 @@ void C_nuclear::calculate_steady_state_soln(s_steady_state_soln &soln, double to
 	double T_sky = CSP::skytemp(T_amb, T_dp, hour);
 	double v_wind = log((m_h_tower + m_h_rec / 2) / 0.003) / log(10.0 / 0.003)*v_wind_10;
 
+	// removing matrix type, as we're not looping over panels or tubes anymore
 	double T_s_guess;
 	double T_panel_out_guess;
 	double T_panel_in_guess;
@@ -648,10 +690,10 @@ void C_nuclear::calculate_steady_state_soln(s_steady_state_soln &soln, double to
 	}
 	else // Initialize solution from scratch
 	{
-		T_salt_hot_guess = m_T_salt_hot_target;    // Initial guess for outlet T
-        T_s_guess = m_T_salt_hot_target;			//[K] Guess the temperature for the surface nodes
+		T_salt_hot_guess  = m_T_salt_hot_target;    // Initial guess for outlet T
+        T_s_guess         = m_T_salt_hot_target;	//[K] Guess the temperature for the surface nodes
         T_panel_out_guess = soln.T_salt_cold_in;	//[K] Guess values for the fluid temp coming out of the control volume
-        T_panel_in_guess = soln.T_salt_cold_in;		//[K] Guess values for the fluid temp coming into the control volume
+        T_panel_in_guess  = soln.T_salt_cold_in;	//[K] Guess values for the fluid temp coming into the control volume
 	}
 
 
@@ -665,33 +707,34 @@ void C_nuclear::calculate_steady_state_soln(s_steady_state_soln &soln, double to
 			T_coolant_prop = (T_salt_hot_guess + soln.T_salt_cold_in) / 2.0;
 		double c_p_coolant = field_htfProps.Cp(T_coolant_prop)*1000.;	
 
-		soln.T_s = T_s_guess;
-        soln.T_panel_out= T_panel_out_guess;
-        soln.T_panel_in = T_panel_in_guess;
+		soln.T_s         = T_s_guess;
+        soln.T_panel_out = T_panel_out_guess;
+        soln.T_panel_in  = T_panel_in_guess;
         soln.T_panel_ave = (soln.T_panel_in + soln.T_panel_out) / 2.0;		//[K] The average coolant temperature in each control volume
-        T_film = (soln.T_s+ T_amb) / 2.0;									//[K] Film temperature
+        T_film = (soln.T_s + T_amb) / 2.0;									//[K] Film temperature
 
 		// Calculate the average surface temperature
 		double T_film_ave = (T_amb + T_salt_hot_guess) / 2.0;
 
         
 		// Convective coefficient for external forced convection using Siebers & Kraabel
-		double k_film = ambient_air.cond(T_film_ave);				//[W/m-K] The conductivity of the ambient air
-		double mu_film = ambient_air.visc(T_film_ave);				//[kg/m-s] Dynamic viscosity of the ambient air
+		double k_film   = ambient_air.cond(T_film_ave);				//[W/m-K] The conductivity of the ambient air
+		double mu_film  = ambient_air.visc(T_film_ave);				//[kg/m-s] Dynamic viscosity of the ambient air
 		double rho_film = ambient_air.dens(T_film_ave, P_amb);		//[kg/m^3] Density of the ambient air
 		double c_p_film = ambient_air.Cp(T_film_ave);				//[kJ/kg-K] Specific heat of the ambient air
-		double Re_for = rho_film * v_wind*m_d_rec / mu_film;		//[-] Reynolds number
-		double ksD = (m_od_tube / 2.0) / m_d_rec;					//[-] The effective roughness of the cylinder [Siebers, Kraabel 1984]
+		double Re_for   = rho_film * v_wind*m_d_rec / mu_film;		//[-] Reynolds number
+		double ksD      = (m_od_tube / 2.0) / m_d_rec;				//[-] The effective roughness of the cylinder [Siebers, Kraabel 1984]
 		double Nusselt_for = CSP::Nusselt_FC(ksD, Re_for);			//[-] S&K
 		double h_for = Nusselt_for * k_film / m_d_rec * m_hl_ffact;	//[W/m^2-K] Forced convection heat transfer coefficient
 
 		// Convection coefficient for external natural convection using Siebers & Kraabel
 		// Note: This relationship applies when the surrounding properties are evaluated at ambient conditions [S&K]
-		double beta = 1.0 / T_amb;													//[1/K] Volumetric expansion coefficient
+		double beta   = 1.0 / T_amb;												//[1/K] Volumetric expansion coefficient
 		double nu_amb = ambient_air.visc(T_amb) / ambient_air.dens(T_amb, P_amb);	//[m^2/s] Kinematic viscosity		
 
         //====== Here there was a loop. 
-        
+        // Gutted the radiation and natural convection calculations.
+		//   if needed again, look into csp_solver_mspt_receiver_222.cpp
         // Natural convection
         double Gr_nat = fmax(0.0, CSP::grav*beta*(soln.T_s - T_amb)*pow(m_h_rec, 3) / pow(nu_amb, 2));	//[-] Grashof Number at ambient conditions
         double Nusselt_nat = 0.098*pow(Gr_nat, (1.0 / 3.0))*pow(soln.T_s / T_amb, -0.14);				//[-] Nusselt number

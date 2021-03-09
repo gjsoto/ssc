@@ -74,7 +74,7 @@ void C_csp_nuclear_plant::init(const C_csp_collector_receiver::S_csp_cr_init_inp
 				C_csp_collector_receiver::S_csp_cr_solved_params & solved_params)
 {
     mc_nuclear.init();
-    solved_params.m_A_aper_total = mc_nuclear.m_dummy_area;	//[m^2]
+    solved_params.m_A_aper_total = mc_nuclear.m_A_nuc;	//[m^2]
     solved_params.m_T_htf_cold_des = mc_nuclear.m_T_htf_cold_des;       //[K]
     solved_params.m_T_htf_hot_des = mc_nuclear.m_T_htf_hot_des;         //[K]
     solved_params.m_q_dot_rec_des = mc_nuclear.m_q_rec_des / 1.E6;		//[MW] this is now a nuclear input, not output from heliostatfield
@@ -323,7 +323,7 @@ double C_csp_nuclear_plant::calculate_optical_efficiency( const C_csp_weatherrea
 double C_csp_nuclear_plant::get_collector_area()
 {
 
-    return mc_nuclear.m_dummy_area;
+    return mc_nuclear.m_A_nuc;
 }
 
 double C_csp_nuclear_plant::calculate_thermal_efficiency_approx( const C_csp_weatherreader::S_outputs &weather, double q_inc )

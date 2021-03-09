@@ -38,47 +38,57 @@ public:
 	// Class to save messages for up stream classes
 	C_csp_messages csp_messages;
     
-    int m_ncall;
-    int m_itermode;
+	// Counters
+    int m_ncall;                    //[-] keeping track of ::call() calls
+    int m_itermode;                 //[-] 1: Solve for design temp, 2: solve to match mass flow restriction
 
 	// Data
-    double m_dummy_area;
-    double m_q_dot_nuc_des;
-    double m_T_salt_hot_target;	    //[C], convert to K in init() call
-    double m_m_dot_htf_max;			//[kg/s];		
+    double m_A_nuc     ;            //[m2]   area of 'nuclear' field, not used
+    double m_q_dot_nuc_des;         //[MWt]  nuclear thermal output transferred directly to HTF
+    double m_T_salt_hot_target;	    //[C]    convert to K in init() call
+    double m_m_dot_htf_max;			//[kg/s] max mass flow rate
     
-    double m_T_s;
-	double m_T_panel_in;
-	double m_T_panel_out;
-	double m_T_panel_ave;
+	// Panel temperatures
+    double m_T_s;                   //[K] panel surface temperature (not an input)
+	double m_T_panel_in;            //[K] temperature of panel inlet (not an input)
+	double m_T_panel_out;           //[K] temperature of panel outlet (not an input)
+	double m_T_panel_ave;           //[K] average panel temperature (not an input)
 
-	double m_q_dot_conv;
-	double m_q_dot_rad;
-	double m_q_dot_loss;
-	double m_q_dot_abs;
-	double m_q_dot_inc;
+	// Heat transfer 
+	double m_q_dot_conv;            //[W] convective heat losses of nuclear (currently 0)
+	double m_q_dot_rad;             //[W] radiative heat losses of nuclear (currently 0)
+	double m_q_dot_loss;            //[W] total heat losses for nuclear plant
+ 	double m_q_dot_abs;             //[W] net heat input
+	double m_q_dot_inc;             //[W] total heat input (equal to m_q_dot_nuc_des for now)
     
+	// Over-design control
 	double m_od_control;			//[-] Additional defocusing for over-design conditions
 	double m_tol_od;		        //[-] Tolerance for over-design iteration
 
-	double m_d_rec;					//[m]
-	double m_h_rec;					//[m]
-    double m_id_tube;
-	double m_od_tube;			//[mm] 
-	double m_th_tube;			//[mm] 
+	// Measurements for "Tower" and HTF
+	double m_d_rec;					//[m] diameter of 'receiver', meant to be total amount of tubes in tower
+	double m_h_rec;					//[m] height of 'receiver'
+    double m_id_tube;               //[mm] inner diameter of each tube holding HTF (output)
+	double m_od_tube;			    //[mm] outer diameter of each tube holding HTF (input)
+	double m_th_tube;			    //[mm] thickness of each tube holding HTF (input)
     
-    double m_hl_ffact;				//[-]
-    double m_m_mixed;
-	double m_LoverD;
-	double m_RelRough;
-
-    double m_A_sf;                  //[m2] "solar field" area, should delete this later
+	// Convection coefficients for pipe flow
+    double m_hl_ffact;				//[-] convective index? 
+    double m_m_mixed;               //[-] exponent for convective mixed heat losses
+	double m_LoverD;                //[-] pipe length/diameter ratio
+	double m_RelRough;              //[-] relative roughness
+	
+	// Materials
+    int m_field_fl;	                //[-] selection for HTF
+	int m_mat_tube;                 //[-] selection for tube material (tube that is holding HTF)
     
-    int m_field_fl;	
-	int m_mat_tube;
-    
-    double m_nuclear_su_delay;      //[hr] required startup time
+	// Startup attributes
+    C_csp_collector_receiver::E_csp_cr_modes m_mode_initial;
+    double m_E_su_init;             //[W-hr] Initial startup energy
+    double m_t_su_init;             //[hr] Startup time requirement
+	double m_nuclear_su_delay;      //[hr] required startup time
     double m_nuclear_qf_delay;      //[-] required startup energy as fraction of design thermal output
+
     
     struct s_steady_state_soln
 	{
@@ -116,18 +126,18 @@ public:
 		double eta_therm;			// Receiver thermal efficiency (energy to HTF not including piping loss / Absorbed solar energy)
         double delta_T_piping;      // Temperature change from thermal loss in piping (K)
 
-        double T_salt_hot_rec_path;      // Receiver flow path outlet T before piping loss (K)
+        double T_salt_hot_rec_path; // Receiver flow path outlet T before piping loss (K)
         
 		double T_s;			// Average external tube T (K)
 		double T_panel_out; // Panel HTF outlet T (K)
 		double T_panel_in;	// Panel HTF inlet T (K)
 		double T_panel_ave; // Panel average HTF T (k)
 
-		double q_dot_inc;  // Panel absorbed solar energy, but only 1 'panel' here! (W)
-		double q_dot_conv; // Panel convection loss (W)
-		double q_dot_rad;  // Panel radiation loss (W)
-		double q_dot_loss; // Panel convection + radiation loss (W)
-		double q_dot_abs;  // Panel energy to HTF (W)
+		double q_dot_inc;   // Panel absorbed solar energy, but only 1 'panel' here! (W)
+		double q_dot_conv;  // Panel convection loss (W)
+		double q_dot_rad;   // Panel radiation loss (W)
+		double q_dot_loss;  // Panel convection + radiation loss (W)
+		double q_dot_abs;   // Panel energy to HTF (W)
 
 		s_steady_state_soln()
 		{
@@ -156,10 +166,6 @@ public:
 	void solve_for_defocus_given_flow(s_steady_state_soln &soln);
 
 	void set_material_properties();
-    
-    C_csp_collector_receiver::E_csp_cr_modes m_mode_initial;
-    double m_E_su_init;             //[W-hr] Initial startup energy
-    double m_t_su_init;             //[hr] Startup time requirement
 
 	S_outputs outputs;
 
