@@ -43,11 +43,11 @@ add_subdirectory(solarpilot)
 add_subdirectory(tcs)
 add_subdirectory(ssc)
 
-if (NOT skip_tools)
+if (NOT SAM_SKIP_TOOLS)
 	add_subdirectory(sdktool)
 	add_subdirectory(tcsconsole)
 endif()
 
-if (NOT skip_tests)
+if (NOT SAM_SKIP_TESTS)
 	add_subdirectory(test)
 endif()
