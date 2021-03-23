@@ -942,7 +942,7 @@ bool SolarField::FieldLayout(){
 
 }
 
-inline bool SolarField::CheckReceiverAcceptance(Receiver* Rec, sp_point *hpos, double tht)
+bool SolarField::CheckReceiverAcceptance(Receiver* Rec, sp_point *hpos, double tht)
 {
     //receiver acceptance angle
     var_receiver *Rv = Rec->getVarMap();
