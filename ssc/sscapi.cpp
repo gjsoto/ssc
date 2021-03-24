@@ -62,7 +62,7 @@
 
 SSCEXPORT int ssc_version()
 {
-	return 240;
+	return 253;
 }
 
 SSCEXPORT const char *ssc_build_info()
@@ -78,7 +78,6 @@ SSCEXPORT const char *ssc_build_info()
 
 extern module_entry_info
 /* extern declarations of modules for linking */
-    cm_entry_nuclear_tes,
 	cm_entry_singlediode,
 	cm_entry_singlediodeparams,
 	cm_entry_iec61853par,
@@ -128,6 +127,7 @@ extern module_entry_info
 	cm_entry_iph_to_lcoefcr,
 	cm_entry_tcsgeneric_solar,
 	cm_entry_tcsmolten_salt,
+	cm_entry_nuclear_tes,
 	cm_entry_tcsdirect_steam,
 	cm_entry_tcslinear_fresnel,
 	cm_entry_linear_fresnel_dsg_iph,
@@ -175,8 +175,7 @@ extern module_entry_info
 
 /* official module table */
 static module_entry_info *module_table[] = {
-    &cm_entry_nuclear_tes,
-    &cm_entry_singlediode,
+	&cm_entry_singlediode,
 	&cm_entry_singlediodeparams,
 	&cm_entry_iec61853par,
 	&cm_entry_iec61853interp,
@@ -225,6 +224,7 @@ static module_entry_info *module_table[] = {
 	&cm_entry_iph_to_lcoefcr,
 	&cm_entry_tcsgeneric_solar,
 	&cm_entry_tcsmolten_salt,
+	&cm_entry_nuclear_tes,
 	&cm_entry_tcsdirect_steam,
 	&cm_entry_tcslinear_fresnel,
 	&cm_entry_linear_fresnel_dsg_iph,
@@ -273,6 +273,7 @@ static module_entry_info *module_table[] = {
 SSCEXPORT ssc_module_t ssc_module_create( const char *name )
 {
 	std::string lname = util::lower_case( name );
+
 	int i=0;
 	while ( module_table[i] != 0
 		 && module_table[i]->f_create != 0 )
@@ -1167,36 +1168,44 @@ SSCEXPORT void __ssc_segfault()
 
 static std::string* s_python_path;
 
-SSCEXPORT void set_python_path(const char* abs_path) {
+SSCEXPORT int set_python_path(const char* abs_path) {
     if (util::dir_exists(abs_path)){
         delete s_python_path;
         s_python_path = new std::string(abs_path);
+        return 1;
     }
     else
-        throw(std::runtime_error("set_python_path error. Python directory doesn't not exist: " + std::string(abs_path)));
+        return 0;
 }
 
 SSCEXPORT const char *get_python_path() {
     if (s_python_path)
         return s_python_path->c_str();
     else
-        throw(std::runtime_error("get_python_path error. Path does not exist. Set with 'set_python_path' first."));
+        return nullptr;
 }
 
-SSCEXPORT ssc_module_t ssc_stateful_module_create( const char *name, ssc_data_t p_data) {
-    auto vt = static_cast<var_table*>(p_data);
-    if (!vt) throw std::runtime_error("p_data invalid.");
+SSCEXPORT int ssc_stateful_module_create(ssc_module_t p_mod, ssc_data_t p_data) {
+    auto cm = static_cast<compute_module*>(p_mod);
+    if (!cm)
+        return 0;
 
-    std::string lname = util::lower_case( name );
+    auto vt = static_cast<var_table*>(p_data);
+    if (!vt)
+        cm->log("p_data invalid.");
+
+    std::string lname = cm->get_name();
     int i = 0;
     while ( module_table[i] != nullptr && module_table[i]->f_create != nullptr ) {
         if ( lname == util::lower_case( module_table[i]->name ) ) {
-            if (module_table[i]->f_create_stateful)
-                return (*(module_table[i]->f_create_stateful))(vt);
-            else
-                throw std::runtime_error("stateful module by that name does not exist.");
+            if (module_table[i]->f_setup_stateful)
+                return (*(module_table[i]->f_setup_stateful))(cm, vt);
+            else {
+                cm->log("This module is not stateful. `setup` does not need to be called.");
+                return 0;
+            }
         }
         i++;
     }
-    throw std::runtime_error("stateful module by that name does not exist.");
+    return 0;
 }

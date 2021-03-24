@@ -20,7 +20,6 @@ WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT(INCLUDING NEGLIGENCE OR OTHERWISE
 OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#include <stdexcept>
 #include "lib_util.h"
 #include "vartab.h"
 
@@ -319,13 +318,13 @@ bool var_table::rename_match_case( const std::string &oldname, const std::string
 
 var_data *var_table::lookup( const std::string &name )
 {
-    var_hash::iterator it = m_hash.find(name );
+    var_hash::iterator it = m_hash.find(name);
     if (it == m_hash.end())
-        it = m_hash.find( util::lower_case(name) );
+      it = m_hash.find( util::lower_case(name));
     if ( it != m_hash.end() )
-		return (*it).second;
-	else
-		return NULL;
+      return (*it).second;
+    else
+      return NULL;
 }
 
 var_data *var_table::lookup_match_case( const std::string &name )

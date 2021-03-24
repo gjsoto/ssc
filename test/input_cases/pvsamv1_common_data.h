@@ -13,15 +13,7 @@ extern char sell_rate_path[256];
 extern char subarray1_shading[256];
 extern char subarray2_shading[256];
 extern char temperature_path[256];
-
-extern int n1;
-extern int n2;
-extern int n3;
-extern int n4;
-extern int n5;
-extern int n6;
-extern int n7;
-extern int n8;
+extern char solar_resource_path_15min_fail[256];
 
 
 /**
@@ -55,5 +47,7 @@ void utility_rate5_default(ssc_data_t& data);
 *  Default data for cashloan run that can be further modified
 */
 void cashloan_default(ssc_data_t& data);
+
+void setup_residential_utility_rates(ssc_data_t& data);
 
 #endif

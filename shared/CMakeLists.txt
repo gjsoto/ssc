@@ -1,24 +1,9 @@
 #####################################################################################################################
 #
-# CMake and System Settings
-#
-#####################################################################################################################
-
-set(CMAKE_VERBOSE_MAKEFILE ON)
-
-if (APPLE)
-    set(CMAKE_OSX_DEPLOYMENT_TARGET "10.9" CACHE STRING "Minimum OS X deployment version")
-endif ()
-
-
-#####################################################################################################################
-#
 # Project Settings
 #
 #####################################################################################################################
-
-Project(shared)
-
+set(CMAKE_VERBOSE_MAKEFILE ON)
 
 include_directories(. ../splinter)
 
@@ -36,10 +21,20 @@ set(SHARED_SRC
         lib_battery.h
         lib_battery_capacity.cpp
         lib_battery_capacity.h
-        lib_battery_dispatch.cpp
-        lib_battery_dispatch.h
+		lib_battery_dispatch.cpp
+		lib_battery_dispatch.h
+		lib_battery_dispatch_automatic_btm.cpp
+		lib_battery_dispatch_automatic_btm.h
+		lib_battery_dispatch_automatic_fom.cpp
+		lib_battery_dispatch_automatic_fom.h
+		lib_battery_dispatch_manual.cpp
+		lib_battery_dispatch_manual.h
         lib_battery_lifetime.cpp
         lib_battery_lifetime.h
+        lib_battery_lifetime_calendar_cycle.cpp
+        lib_battery_lifetime_calendar_cycle.h
+        lib_battery_lifetime_nmc.cpp
+        lib_battery_lifetime_nmc.h
         lib_battery_powerflow.cpp
         lib_battery_powerflow.h
         lib_battery_voltage.cpp
@@ -99,6 +94,8 @@ set(SHARED_SRC
         lib_util.h
         lib_utility_rate.cpp
         lib_utility_rate.h
+		lib_utility_rate_equations.cpp
+        lib_utility_rate_equations.h
         lib_weatherfile.cpp
         lib_weatherfile.h
         lib_wind_obos.cpp
@@ -119,42 +116,6 @@ set(SHARED_SRC
 
 #####################################################################################################################
 #
-# Compile Options per Platform
-#
-#####################################################################################################################
-
-set(CMAKE_POSITION_INDEPENDENT_CODE ON)
-
-if (MSVC)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /bigobj")
-    add_compile_options(/MP /W0)
-    add_compile_definitions(__64BIT__ __WINDOWS__ _WINDOWS _CRT_SECURE_NO_WARNINGS LPWINAPP)
-    foreach (flag_var CMAKE_C_FLAGS_DEBUG CMAKE_CXX_FLAGS_DEBUG)
-        set(${flag_var} "${${flag_var}} /D_DEBUG" CACHE STRING "compile flags" FORCE)
-    endforeach ()
-else (MSVC)
-    if (APPLE)
-        add_compile_options(-arch x86_64 -fno-common -Wno-unused-private-field -Wunused-private-field)
-        add_definitions(-DWX_PRECOMP)
-    else ()
-        SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Werror -Wno-misleading-indentation -Wno-int-in-bool-context")
-        add_definitions(-D__64BIT__)
-    endif ()
-    SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
-    set_source_files_properties(${SHARED_SRC} PROPERTIES
-            COMPILE_FLAGS "-Wall -Wno-strict-aliasing -Wno-deprecated-declarations -Wno-unknown-pragmas -Wno-reorder")
-    set_source_files_properties(${SHARED_SRC} PROPERTIES
-            COMPILE_FLAGS "-Wno-ignored-attributes -Wno-deprecated")
-    if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-        add_compile_definitions(_DEBUG)
-    else ()
-        SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -DNDEBUG")
-    endif ()
-endif (MSVC)
-
-
-#####################################################################################################################
-#
 # CMake Targets
 #
 #####################################################################################################################
@@ -166,6 +127,8 @@ set_target_properties(shared
         PREFIX ""
         )
 
+set_default_compile_options(shared)
+set_disabled_warnings(shared)
 
 #####################################################################################################################
 #

@@ -27,6 +27,8 @@ OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "core.h"
 #include "lib_battery.h"
+#include "lib_utility_rate.h"
+#include "cmod_utilityrate5.h"
 
 // forward declarations to speed up build
 class SharedInverter;
@@ -51,6 +53,7 @@ struct batt_variables
 	int batt_meter_position;
 	int batt_target_choice;
 	int batt_loss_choice;
+	int batt_life_model;
 	int batt_calendar_choice;
 
 	ssc_number_t *pcharge = 0;
@@ -112,9 +115,6 @@ struct batt_variables
 
 	std::vector<double> target_power_monthly;
 	std::vector<double> target_power;
-	std::vector<double> pv_clipping_forecast;
-	std::vector<double> pv_dc_power_forecast;
-
 
 	std::vector<double> batt_losses_charging;
 	std::vector<double> batt_losses_discharging;
@@ -131,6 +131,7 @@ struct batt_variables
 	double batt_Vfull;
 	double batt_Vexp;
 	double batt_Vnom;
+    double batt_Vcut;
 	double batt_Qfull;
 	double batt_Qfull_flow;
 	double batt_Qexp;
@@ -180,7 +181,7 @@ struct batt_variables
 	double batt_calendar_c;
 
 	/*! Battery costs */
-	double batt_cost_per_kwh;
+	std::vector<double> batt_cost_per_kwh;
 
 	/*! PPA price */
 	std::vector<double> forecast_price_series_dollar_per_kwh;
@@ -194,12 +195,11 @@ struct batt_variables
 
 	/* Battery replacement options */
 	int batt_replacement_option;
-	std::vector<int> batt_replacement_schedule;
 	std::vector<double> batt_replacement_schedule_percent;
 
 	/* Battery cycle costs */
 	int batt_cycle_cost_choice;
-	double batt_cycle_cost;
+    std::vector<double> batt_cycle_cost;
 };
 
 struct battstor
@@ -220,10 +220,10 @@ struct battstor
 
 	void initialize_time(size_t year, size_t hour_of_year, size_t step);
 
-	/// Run the battery for the current timestep, given the PV power, load, and clipped power
+	/// Run the battery for the current timestep, given the System power, load, and clipped power
 	void advance(var_table *vt, double P_gen, double V_gen=0, double P_load=0, double P_gen_clipped=0);
 
-	/// Given a DC connected battery, set the shared PV and battery invertr
+	/// Given a DC connected battery, set the shared system (typically PV) and battery inverter
 	void setSharedInverter(SharedInverter * sharedInverter);
 
 	void outputs_fixed();
@@ -272,6 +272,7 @@ struct battstor
 	dispatch_t *dispatch_model;
 	ChargeController *charge_control;
 	UtilityRate * utilityRate;
+    rate_data* util_rate_data;
 
 	bool en;
 	int chem;
@@ -324,22 +325,23 @@ struct battstor
 		*outDispatchMode,
 		*outBatteryPower,
 		*outGenPower,
+        *outGenWithoutBattery,
 		*outGridPower,
-		*outPVToLoad,
+		*outSystemToLoad,
 		*outBatteryToLoad,
 		*outGridToLoad,
 		*outFuelCellToLoad,
 		*outGridPowerTarget,
 		*outBattPowerTarget,
-		*outPVToBatt,
+		*outSystemToBatt,
 		*outGridToBatt,
 		*outFuelCellToBatt,
-		*outPVToGrid,
+		*outSystemToGrid,
 		*outBatteryToGrid,
 		*outFuelCellToGrid,
 		*outBatteryConversionPowerLoss,
 		*outBatterySystemLoss,
-		*outAnnualPVChargeEnergy,
+		*outAnnualSystemChargeEnergy,
 		*outAnnualGridChargeEnergy,
 		*outAnnualChargeEnergy,
 		*outAnnualDischargeEnergy,
@@ -356,7 +358,7 @@ struct battstor
 
 	double outAverageCycleEfficiency;
 	double outAverageRoundtripEfficiency;
-	double outPVChargePercent;
+	double outSystemChargePercent;
 };
 
 #endif

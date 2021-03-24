@@ -37,7 +37,7 @@ OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 var_info vtab_battwatts[] = {
 	/*   VARTYPE           DATATYPE         NAME                               LABEL                                    UNITS      META                   GROUP                  REQUIRED_IF                 CONSTRAINTS                      UI_HINTS*/
-	{ SSC_INPUT,        SSC_NUMBER,      "system_use_lifetime_output",        "PV lifetime simulation",                 "0/1",     "0=SingleYearRepeated,1=RunEveryYear",                     "Lifetime",             "?=0",                        "BOOLEAN",                        "" },
+	{ SSC_INPUT,        SSC_NUMBER,      "system_use_lifetime_output",        "Enable lifetime simulation",                 "0/1",     "0=SingleYearRepeated,1=RunEveryYear",                     "Lifetime",             "?=0",                        "BOOLEAN",                        "" },
 	{ SSC_INPUT,        SSC_NUMBER,      "analysis_period",                   "Lifetime analysis period",               "years",   "The number of years in the simulation",                   "Lifetime",             "system_use_lifetime_output=1",   "",                               "" },
 	{ SSC_INPUT,        SSC_NUMBER,      "batt_simple_enable",                "Enable Battery",                         "0/1",     "",                 "Battery",                  "?=0",                        "BOOLEAN",                       "" },
 	{ SSC_INPUT,        SSC_NUMBER,      "batt_simple_kwh",                   "Battery Capacity",                       "kWh",     "",                 "Battery",                  "?=0",                        "",                              "" },
@@ -50,7 +50,8 @@ var_info vtab_battwatts[] = {
 	{ SSC_INPUT,        SSC_ARRAY,       "ac",							     "AC inverter power",                      "W",       "",                 "Battery",                           "",                           "",                              "" },
     { SSC_INPUT,		SSC_ARRAY,	     "load",			                     "Electricity load (year 1)",              "kW",	   "",		           "Battery",                           "",	                         "",	                          "" },
     { SSC_INPUT,		SSC_ARRAY,	     "crit_load",			             "Critical electricity load (year 1)",     "kW",	   "",		           "Battery",                           "",	                         "",	                          "" },
-	{ SSC_INPUT,        SSC_NUMBER,      "inverter_efficiency",               "Inverter Efficiency",                     "%",      "",                  "Battery",                          "",                           "MIN=0,MAX=100",                               "" },
+    { SSC_INPUT,        SSC_ARRAY,       "load_escalation",                  "Annual load escalation",                 "%/year",   "",                 "Load",                              "?=0",                       "",                              "" },
+    { SSC_INPUT,        SSC_NUMBER,      "inverter_efficiency",               "Inverter Efficiency",                     "%",      "",                  "Battery",                          "",                           "MIN=0,MAX=100",                               "" },
 
 var_info_invalid  };
 
@@ -81,12 +82,14 @@ battwatts_create(size_t n_recs, size_t n_years, int chem, int meter_pos, double 
         batt_vars->batt_Vfull = 4.1;
         batt_vars->batt_Vexp = 4.05;
         batt_vars->batt_Vnom = 3.4;
+        batt_vars->batt_Vcut = 0;
         batt_vars->batt_Qfull = 2.25;
         batt_vars->batt_Qfull_flow = 0;
         batt_vars->batt_Qexp = 0.178 * batt_vars->batt_Qfull;
         batt_vars->batt_Qnom = 0.889 * batt_vars->batt_Qfull;
         batt_vars->batt_C_rate = 0.2;
         batt_vars->batt_resistance = 0.1;
+
 
         // Battery lifetime
         lifetime_matrix->push_back(20); lifetime_matrix->push_back(0); lifetime_matrix->push_back(100);
@@ -126,6 +129,7 @@ battwatts_create(size_t n_recs, size_t n_years, int chem, int meter_pos, double 
         batt_vars->batt_Vfull = 2.2;
         batt_vars->batt_Vexp = 2.06;
         batt_vars->batt_Vnom = 2.03;
+        batt_vars->batt_Vcut = 0;
         batt_vars->batt_Qfull = 20;
         batt_vars->batt_Qexp = 0.025 * batt_vars->batt_Qfull;
         batt_vars->batt_Qnom = 0.90 * batt_vars->batt_Qfull;
@@ -227,7 +231,7 @@ battwatts_create(size_t n_recs, size_t n_years, int chem, int meter_pos, double 
     batt_vars->batt_replacement_capacity = 0.;
 
     // Battery lifetime
-    batt_vars->batt_calendar_choice = lifetime_params::CALENDAR_CHOICE::NONE;
+    batt_vars->batt_calendar_choice = calendar_cycle_params::CALENDAR_CHOICE::NONE;
     batt_vars->batt_calendar_lifetime_matrix = util::matrix_t<double>();
     batt_vars->batt_calendar_q0 = 1.0;
 
@@ -303,14 +307,23 @@ void cm_battwatts::exec()
         std::shared_ptr<batt_variables> batt_vars = setup_variables(p_ac.size());
         size_t n_rec_lifetime = p_ac.size();
 
+        size_t analysis_period = (size_t)as_integer("analysis_period");
+
+        scalefactors scale_calculator(m_vartab);
+        // compute load (electric demand) annual escalation multipliers
+        std::vector<ssc_number_t> load_scale = scale_calculator.get_factors("load_escalation");
+
         std::vector<ssc_number_t> load_lifetime;
         size_t n_rec_single_year;
         double dt_hour_gen;
+        double interpolation_factor = 1.0;
         single_year_to_lifetime_interpolated<ssc_number_t>(
                 (bool)as_integer("system_use_lifetime_output"),
-                (size_t)as_integer("analysis_period"),
+                analysis_period,
                 n_rec_lifetime,
                 p_load,
+                load_scale,
+                interpolation_factor,
                 load_lifetime,
                 n_rec_single_year,
                 dt_hour_gen);
@@ -354,6 +367,7 @@ void cm_battwatts::exec()
                         resilience->run_surviving_batteries(p_crit_load[count % n_rec_single_year], p_ac[count]);
                     }
 
+                    batt->outGenWithoutBattery[count] = p_ac[count];
                     batt->advance(m_vartab, p_ac[count], voltage, p_load[count]);
                     p_gen[count] = batt->outGenPower[count];
                     count++;

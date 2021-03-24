@@ -487,19 +487,20 @@ public:
 	
 	struct S_csp_cr_solved_params
 	{
-		double m_T_htf_cold_des;		//[K]
-		double m_P_cold_des;			//[kPa]
-		double m_x_cold_des;			//[-]
-        double m_T_htf_hot_des;         //[K]
-		double m_q_dot_rec_des;			//[MW]
-		double m_A_aper_total;			//[m^2] Total solar field aperture area
-        double m_dP_sf;                 //[bar] Total field pressure drop
-
-		S_csp_cr_solved_params()
-		{
-			m_T_htf_cold_des = m_P_cold_des = m_x_cold_des = m_T_htf_cold_des =
-				m_q_dot_rec_des = m_A_aper_total = m_dP_sf = std::numeric_limits<double>::quiet_NaN();
-		}
+	  	double m_T_htf_cold_des =		//[K]
+		  std::numeric_limits<double>::quiet_NaN();
+	  	double m_P_cold_des =		//[kPa]
+		  std::numeric_limits<double>::quiet_NaN();
+	  	double m_x_cold_des =		//[-]
+		  std::numeric_limits<double>::quiet_NaN();
+	  	double m_T_htf_hot_des =         	//[K]
+		  std::numeric_limits<double>::quiet_NaN();
+	  	double m_q_dot_rec_des =		//[MW]
+		  std::numeric_limits<double>::quiet_NaN();
+	  	double m_A_aper_total =		//[m^2] Total solar field aperture area
+		  std::numeric_limits<double>::quiet_NaN();
+	  	double m_dP_sf =                 	//[bar] Total field pressure drop
+		  std::numeric_limits<double>::quiet_NaN();
 	};
 
 	struct S_csp_cr_inputs

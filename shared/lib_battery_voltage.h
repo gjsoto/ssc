@@ -38,8 +38,8 @@ struct voltage_params {
     MODE voltage_choice;
     int num_cells_series;        // number of cells in series
     int num_strings;             // addition number in parallel
-    double Vnom_default; // nominal cell voltage [V]
-    double resistance;                    // internal cell resistance (Ohm)
+    double Vnom_default;         // nominal cell voltage [V]
+    double resistance;           // internal cell resistance (Ohm)
     double dt_hr;
 
     struct {
@@ -50,6 +50,7 @@ struct voltage_params {
         double Qexp;
         double Qnom;
         double C_rate;
+        double Vcut;
     } dynamic;
 
     //  depth-of-discharge [%] and cell voltage [V] pairs
@@ -60,7 +61,7 @@ struct voltage_params {
 
 struct voltage_state {
     double cell_voltage;         // closed circuit voltage per cell [V]
-
+    double Q_full_mod;           // Cell capacity adjusted for cutoff voltage [Ah]
     friend std::ostream &operator<<(std::ostream &os, const voltage_state &p);
 
     bool operator==(const voltage_state &p);
@@ -84,6 +85,9 @@ public:
     virtual voltage_t *clone() = 0;
 
     virtual ~voltage_t() = default;
+
+    // Call after initialization to set starting V with SOC
+    virtual void set_initial_SOC(double init_soc) = 0;
 
     // Returns estimated max charge power over the next timestep (negative)
     virtual double calculate_max_charge_w(double q, double qmax, double kelvin, double *max_current) = 0;
@@ -120,8 +124,8 @@ private:
 
 class voltage_table_t : public voltage_t {
 public:
-    voltage_table_t(int num_cells_series, int num_strings, double voltage, util::matrix_t<double> &voltage_table,
-                    double R, double dt_hour);
+    voltage_table_t(int num_cells_series, int num_strings, double voltage,
+                    util::matrix_t<double> &voltage_table, double R, double dt_hour);
 
     voltage_table_t(std::shared_ptr<voltage_params> p);
 
@@ -132,6 +136,8 @@ public:
     voltage_t *clone() override;
 
     ~voltage_table_t() override = default;
+
+    void set_initial_SOC(double init_soc) override;
 
     double calculate_max_charge_w(double q, double qmax, double kelvin, double *max_current) override;
 
@@ -159,7 +165,7 @@ private:
 class voltage_dynamic_t : public voltage_t {
 public:
     voltage_dynamic_t(int num_cells_series, int num_strings, double voltage, double Vfull,
-                      double Vexp, double Vnom, double Qfull, double Qexp, double Qnom,
+                      double Vexp, double Vnom, double Qfull, double Qexp, double Qnom, double Vcut,
                       double C_rate, double R, double dt_hr);
 
     voltage_dynamic_t(std::shared_ptr<voltage_params> p);
@@ -172,6 +178,8 @@ public:
 
     ~voltage_dynamic_t() override = default;
 
+    void set_initial_SOC(double init_soc) override;
+
     double calculate_max_charge_w(double q, double qmax, double kelvin, double *max_current) override;
 
     double calculate_max_discharge_w(double q, double qmax, double kelvin, double *max_current) override;
@@ -181,26 +189,31 @@ public:
 
     double calculate_voltage_for_current(double I, double q, double qmax, double T_k) override;
 
-    void updateVoltage(double q, double qmax, double I, double temp, double dt) override;
-
+    
+    void updateVoltage(double q, double qmax, double I, double temp, double dt) override; //updates battery voltage based on system capacity (Ah), system maximum capacity (Ah), current (A), temperature (C), and time step (hr)
+    
 
 protected:
-    double _A;
-    double _B0;
-    double _E0;
-    double _K;
+    double _A; //Exponential zone amplitude (V)
+    double _B0; //Exponential zone time constant inverse (Ah)^-1
+    double _E0; //Battery constant voltage (V)
+    double _K; //Polarization voltage (K)
 
     void parameter_compute();
 
     double voltage_model_tremblay_hybrid(double Q_cell, double I, double q0_cell);
 
+    double calculate_Qfull_mod(double qmax);
+
     // solver quantities
-    double solver_Q;
-    double solver_q;
-    double solver_cutoff_voltage;
-    double solver_power;
+    double solver_Q; //Maximum battery capacity (Ah)
+    double solver_Q_mod; //Modified battery capacity for cutoff voltage input (Ah)
+    double solver_q; //Actual battery capacity (Ah)
+    double solver_power; //Battery output power (W)
 
     void solve_current_for_charge_power(const double *x, double *f);
+
+    
 
     void solve_current_for_discharge_power(const double *x, double *f);
 
@@ -212,8 +225,8 @@ private:
 // D'Agostino Vanadium Redox Flow Model
 class voltage_vanadium_redox_t : public voltage_t {
 public:
-    voltage_vanadium_redox_t(int num_cells_series, int num_strings, double Vnom_default, double R,
-                             double dt_hour = 1.);
+    voltage_vanadium_redox_t(int num_cells_series, int num_strings, double Vnom_default,
+                             double R, double dt_hour);
 
     explicit voltage_vanadium_redox_t(std::shared_ptr<voltage_params> p);
 
@@ -224,6 +237,8 @@ public:
     voltage_t *clone() override;
 
     ~voltage_vanadium_redox_t() override = default;
+
+    void set_initial_SOC(double init_soc) override;
 
     double calculate_max_charge_w(double q, double qmax, double kelvin, double *max_current) override;
 
@@ -240,7 +255,7 @@ protected:
     // cell voltage model is on a per-cell basis
     double voltage_model(double q, double qmax, double I_string, double T);
 
-    // RC/F: R is Molar gas constant [J/mol/K]^M, R is Faraday constant [As/mol]^M, C is model correction factor^M
+    // RC/F: R is Molar gas constant [J/mol/K]^M, R is Faraday constant [As/mol]^M, C is model correction factor^M 1.38
     double m_RCF;
 
     // solver quantities

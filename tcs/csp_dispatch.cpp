@@ -621,6 +621,9 @@ static void calculate_parameters(csp_dispatch_opt *optinst, unordered_map<std::s
         // minimum power based on linear fit
         pars["Wdotl"] = (pars["Ql"] - limit1) * pars["etap"];
 
+        //TODO: Ramp rate -> User input
+        pars["Wdlim"] = pars["W_dot_cycle"] * 0.03 * 60. * pars["delta"];      //Cycle Power Ramping Limit = Rated cycle power * 3%/min (ramp limit "User Input") * 60 mins/hr * hr
+
         // Adjust wlim if specified value is too low to permit cycle operation
         int ns = optinst->forecast_params.n_scenarios;
         optinst->outputs.wnet_lim_min.resize(nt, ns);
@@ -812,6 +815,7 @@ bool csp_dispatch_opt::optimize()
 #ifdef MOD_CYCLE_SHUTDOWN
         O.add_var("ycsd", optimization_vars::VAR_TYPE::BINARY_T, optimization_vars::VAR_DIM::DIM_T, nt);
 #endif
+        O.add_var("yoff", optimization_vars::VAR_TYPE::BINARY_T, optimization_vars::VAR_DIM::DIM_T, nt);
         O.add_var("ycsup", optimization_vars::VAR_TYPE::BINARY_T, optimization_vars::VAR_DIM::DIM_T, nt);
         O.add_var("ychsp", optimization_vars::VAR_TYPE::BINARY_T, optimization_vars::VAR_DIM::DIM_T, nt);
         O.add_var("wdot", optimization_vars::VAR_TYPE::REAL_T, optimization_vars::VAR_DIM::DIM_T, nt, 0. ); //0 lower bound?
@@ -942,7 +946,7 @@ bool csp_dispatch_opt::optimize()
                 //xxrow[ t + nt*(i++) ] = -0.5;
 
                 col[ t + nt*(i  ) ] = O.column("yrsup", t);
-                row[ t + nt*(i++) ] = -P["rsu_cost"]*tadj;
+                row[ t + nt*(i++) ] = -P["rsu_cost"]* (1/tadj);
 
                 //xxcol[ t + nt*(i   ] = O.column("yrhsp", t);
                 //xxrow[ t + nt*(i++) ] = -tadj;
@@ -954,7 +958,7 @@ bool csp_dispatch_opt::optimize()
                 row[ t + nt*(i++) ] = (-P["csu_cost"]*tadj * 0.1);
 
                 col[ t + nt*(i  ) ] = O.column("delta_w", t);
-                row[ t + nt*(i++) ] = -P["pen_delta_w"]*tadj;
+                row[ t + nt*(i++) ] = -P["pen_delta_w"]* (1/tadj);
 
 				col[t + nt * (i)] = O.column("ycsu", t);
 				row[t + nt * (i++)] = -consec_su_pen *tadj;
@@ -1004,8 +1008,8 @@ bool csp_dispatch_opt::optimize()
         */
         //cycle production change
         {
-            REAL row[3];
-            int col[3];
+            REAL row[5];
+            int col[5];
             
             for(int t=0; t<nt; t++)
             {
@@ -1025,6 +1029,42 @@ bool csp_dispatch_opt::optimize()
                 else
                 {
                     add_constraintex(lp, 2, row, col, GE, -P["Wdot0"]);
+                }
+
+                // Cycle ramping limit (sub-hourly model Delta < 1)
+                if (P["delta"] < 1.)
+                {
+                    double temp_coef = (outputs.eta_pb_expected.at(t) / params.eta_cycle_ref) * P["Wdotl"] - P["Wdlim"];
+
+                    int i = 0;
+                    row[i] = 1.;
+                    col[i++] = O.column("delta_w", t);
+
+                    row[i] = -temp_coef * 2.;
+                    col[i++] = O.column("ycsb", t);
+             
+             /* #ifdef MOD_CYCLE_SHUTDOWN
+                    row[i] = -temp_coef * 2.;
+                    col[i++] = O.column("ycsd", t);
+                #endif   */
+
+                    row[i] = -temp_coef * 2.;
+                    col[i++] = O.column("yoff", t);
+
+                    row[i] = -temp_coef;
+                    col[i++] = O.column("y", t);
+
+                    if (t>0)
+                    {
+                        row[i] = temp_coef;
+                        col[i++] = O.column("y", t-1);
+
+                        add_constraintex(lp, i, row, col, LE, P["Wdlim"]);
+                    }
+                    else
+                    {
+                        add_constraintex(lp, i, row, col, LE, P["Wdlim"] - temp_coef * P["y0"]);
+                    }
                 }
             }
         }
@@ -1118,22 +1158,22 @@ bool csp_dispatch_opt::optimize()
                 add_constraintex(lp, 2, row, col, LE, 0.);
 
                 //Receiver operation allowed when:
-                row[0] = 1.;
+                row[0] = P["Er"];
                 col[0] = O.column("yr", t);
-                
-                row[1] = -1.0/P["Er"]; 
+
+                row[1] = -1.0;
                 col[1] = O.column("ursu", t);
 
-                if(t>0)
+                if (t > 0)
                 {
-                    row[2] = -1.;
-                    col[2] = O.column("yr", t-1);
+                    row[2] = - P["Er"];
+                    col[2] = O.column("yr", t - 1);
 
-                    add_constraintex(lp, 3, row, col, LE, 0.); 
+                    add_constraintex(lp, 3, row, col, LE, 0.);
                 }
                 else
                 {
-                    add_constraintex(lp, 2, row, col, LE, (params.is_rec_operating0 ? 1. : 0.) );
+                    add_constraintex(lp, 2, row, col, LE, (params.is_rec_operating0 ? P["Er"] : 0.));
                 }
 
                 //Receiver startup can't be enabled after a time step where the Receiver was operating
@@ -1255,10 +1295,18 @@ bool csp_dispatch_opt::optimize()
 
                     add_constraintex(lp, 3, row, col, GE, -1);*/
 
-                    //receiver shutdown energy
+                    
+                    //receiver shutdown energy 
                     /*row[0] = 1.;
-                    col[0] = O.column("yrsd", t-1);
-
+                    //condition off of Delta[t] for the two constraint forms
+                    if (P["delta"] >= 1.)
+                    {
+                        col[0] = O.column("yrsd", t - 1);       //(hourly -> Delta = 1)
+                    }
+                    else
+                    {
+                        col[0] = O.column("yrsd", t);           //(sub-hourly -> Delta < 1)
+                    }
                     row[1] = -1.;
                     col[1] = O.column("yr", t-1);
 
@@ -1271,8 +1319,7 @@ bool csp_dispatch_opt::optimize()
                     row[4] = 1.;
                     col[4] = O.column("yrsb", t);
 
-                    add_constraintex(lp, 5, row, col, GE, 0.);*/
-
+                    add_constraintex(lp, 5, row, col, GE, 0.); */
                 }
             }
         }
@@ -2038,6 +2085,12 @@ bool csp_dispatch_opt::optimize()
         //set_solutionlimit(lp, 1);     //only look for 1 optimal solution
         //set_outputfile(lp, "c://users//mwagner//documents//dropbox//nrel//formulation//trace.txt");
         //set_debug(lp, TRUE);
+        
+        //Different Basis Factorization Package:
+            /* Using these packages did not seem to help reduce solution times. */
+        //set_BFP(lp, "bfp_etaPFI");    // original lp_solve product form of the inverse.
+        //set_BFP(lp, "bfp_LUSOL");     // LU decomposition. (LP solve manual suggests using this one) Seems to increase solve times
+        //set_BFP(lp, "bfp_GLPK");      // GLPK LU decomposition.
 
         //branch and bound rule. This one has a big impact on solver performance.
         if(solver_params.bb_type > 0)

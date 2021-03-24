@@ -22,6 +22,7 @@ char battery_target_power[256] = {};
 char subhourly_weather_file[256] = {};
 char subhourly_batt_temps[256] = {};
 char subhourly_dispatch_factors[256] = {};
+char clipping_forecast[256] = {};
 
 // pvsamv1_common_data uses n1-8
 int x1 = sprintf(dc_adjust_hourly, "%s/test/input_cases/pvsamv1_battery_data/dc_adjust_hourly.csv", SSCDIR);
@@ -37,6 +38,7 @@ int x10 = sprintf(custom_dispatch_singleowner_subhourly_schedule, "%s/test/input
 int x11 = sprintf(subhourly_weather_file, "%s/test/input_cases/pvsamv1_battery_data/USA AZ Phoenix (TMY2)_15mInterpolated.csv", SSCDIR);
 int x12 = sprintf(subhourly_batt_temps, "%s/test/input_cases/pvsamv1_battery_data/batt_room_temperature_celsius_15min.csv", SSCDIR);
 int x13 = sprintf(subhourly_dispatch_factors, "%s/test/input_cases/pvsamv1_battery_data/dispatch_factors_ts_15min.csv", SSCDIR);
+int x14 = sprintf(clipping_forecast, "%s/test/input_cases/pvsamv1_battery_data/clipping_forecast.csv", SSCDIR);
 
 void pvsamv1_pv_defaults(ssc_data_t& data) {
 	ssc_data_set_string(data, "solar_resource_file", solar_resource_path);
@@ -428,8 +430,8 @@ void pvsamv1_battery_defaults(ssc_data_t& data) {
 	ssc_data_set_array(data, "batt_replacement_schedule", p_batt_replacement_schedule, 25);
 	ssc_number_t p_batt_replacement_schedule_percent[25] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 	ssc_data_set_array(data, "batt_replacement_schedule_percent", p_batt_replacement_schedule_percent, 25);
-	ssc_number_t p_om_replacement_cost1[1] = { 500 };
-	ssc_data_set_array(data, "om_replacement_cost1", p_om_replacement_cost1, 1);
+	ssc_number_t p_om_replacement_cost1[25] = { 500, 500, 500, 500, 500, 500, 500, 500, 500, 500, 500, 500, 500, 500, 500, 500, 500, 500, 500, 500,500, 500, 500, 500, 500 };
+	ssc_data_set_array(data, "om_replacement_cost1", p_om_replacement_cost1, 25);
 	ssc_data_set_number(data, "batt_mass", 95);
 	ssc_data_set_number(data, "batt_surface_area", 502.3);
 	ssc_data_set_number(data, "batt_Cp", 1004);
@@ -466,7 +468,8 @@ void pvsamv1_battery_defaults(ssc_data_t& data) {
 	ssc_data_set_number(data, "batt_look_ahead_hours", 18);
 	ssc_data_set_number(data, "batt_dispatch_update_frequency_hours", 1);
 	ssc_data_set_number(data, "batt_cycle_cost_choice", 0);
-	ssc_data_set_number(data, "batt_cycle_cost", 0.10000000000000001);
+    ssc_number_t p_batt_cycle_cost[1] = { 0.1 };
+    ssc_data_set_array(data, "batt_cycle_cost", p_batt_cycle_cost, 1);
 	ssc_data_set_number(data, "en_electricity_rates", 0);
 	ssc_data_set_number(data, "ur_en_ts_sell_rate", 0);
 	ssc_number_t p_ur_ts_buy_rate[1] = { 0 };
@@ -1176,6 +1179,9 @@ void commercial_multiarray_default(ssc_data_t& data) {
 	ssc_data_set_number(data, "batt_dispatch_auto_can_fuelcellcharge", 0);
 	ssc_data_set_number(data, "batt_dispatch_auto_can_gridcharge", 0);
 	ssc_data_set_number(data, "batt_dispatch_auto_can_charge", 1);
+    ssc_data_set_number(data, "batt_cycle_cost_choice", 0);
+    ssc_number_t p_batt_cycle_cost[1] = { 0.1 };
+    ssc_data_set_array(data, "batt_cycle_cost", p_batt_cycle_cost, 1);
 }
 
 // Run pvsam1 with battery enabled and a PPA agreement. Set up data elsewhere to allow adjustment of dispatch mode and similar

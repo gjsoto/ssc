@@ -170,6 +170,8 @@ public:
 	compute_module( ); // cannot be created directly - has a pure virtual function
 	virtual ~compute_module();
 
+	void set_name(const std::string &n) { name = n; }
+	std::string get_name() { return name; }
 	bool update( const std::string &current_action, float percent_done, float time=-1.0 );
 	void log( const std::string &msg, int type=SSC_NOTICE, float time=-1.0 );
 	bool extproc( const std::string &command, const std::string &workdir );
@@ -177,7 +179,7 @@ public:
 	log_item *log(int index);
 	var_info *info(int index);
 
-	bool compute( handler_interface *handler, var_table *data );
+    virtual bool compute( handler_interface *handler, var_table *data );
 
 
 	/* on_extproc_output: this function will be called by the
@@ -195,6 +197,9 @@ public:
 	virtual bool on_extproc_output( const std::string & ) { return false; }
 
 protected:
+
+    std::string name;
+
     /* these members are take values only during a call to 'compute(..)'
   and are NULL otherwise */
     handler_interface   *m_handler;
@@ -203,7 +208,6 @@ protected:
 	/* must be implemented to perform calculations
 	   note: can throw exceptions of type 'compute_module::error' */
 	virtual void exec( ) = 0;
-
 
 	/* can be called in constructors to build up the variable table references */
 	void add_var_info( var_info vi[] );
@@ -219,8 +223,9 @@ public:
 	const var_info &info( const std::string &name );
 	bool is_ssc_array_output( const std::string &name );
 	var_data *lookup( const std::string &name );
-	var_data *assign( const std::string &name, const var_data &value );
-	ssc_number_t *allocate( const std::string &name, size_t length );
+    var_data *assign( const std::string &name, const var_data &value );
+    void unassign( const std::string& name);
+    ssc_number_t *allocate( const std::string &name, size_t length );
 	ssc_number_t *allocate( const std::string &name, size_t nrows, size_t ncols );
 	util::matrix_t<ssc_number_t>& allocate_matrix( const std::string &name, size_t nrows, size_t ncols );
 	var_data &value( const std::string &name );
@@ -297,20 +302,22 @@ public:
 
 
 #define DEFINE_MODULE_ENTRY( name, desc, ver ) \
-	static compute_module *_create_ ## name () { return new cm_ ## name; } \
+	static compute_module *_create_ ## name () { auto x = new cm_ ## name; x->set_name(#name); return x; } \
 	module_entry_info cm_entry_ ## name = { \
 		#name, desc, ver, _create_ ## name, nullptr }; \
 
 #define DEFINE_TCS_MODULE_ENTRY( name, desc, ver ) \
-	static compute_module *_create_ ## name() { extern tcstypeprovider sg_tcsTypeProvider; return new cm_ ## name(&sg_tcsTypeProvider); } \
+	static compute_module *_create_ ## name() { extern tcstypeprovider sg_tcsTypeProvider; \
+	    auto x = new cm_ ## name(&sg_tcsTypeProvider); x->set_name(#name); return x; } \
 	module_entry_info cm_entry_ ## name = { \
 		#name, desc, ver, _create_ ## name, nullptr }; \
 
 #define DEFINE_STATEFUL_MODULE_ENTRY(name, desc, ver) \
-    static compute_module *_create_ ## name () { return new cm_ ## name; } \
-    static compute_module *_create_stateful_ ## name (var_table* vt) { return new cm_ ## name (vt); } \
+    static compute_module *_create_ ## name () { auto x = new cm_ ## name; x->set_name(#name); return x; } \
+    static int _setup_ ## name (compute_module *cm, var_table *vt) { auto cms = dynamic_cast<cm_ ##name *>(cm); \
+        if (!cms) return 0; return cms->setup(vt);  } \
 	module_entry_info cm_entry_ ## name = { \
-		#name, desc, ver, _create_ ## name, _create_stateful_ ## name }; \
+		#name, desc, ver, _create_ ## name, _setup_ ## name }; \
 
 struct module_entry_info
 {
@@ -318,7 +325,7 @@ struct module_entry_info
 	const char *description;
 	int version;
 	compute_module * (*f_create)();
-	compute_module * (*f_create_stateful)(var_table*);
+	int (*f_setup_stateful)(compute_module*, var_table*);       // return 1 for success, otherwise 0 with errors in log
 };
 
 
