@@ -439,7 +439,7 @@ SSCEXPORT const char *get_python_path();
  */
 
 // returns 1 if successful, otherwise 0 with errors stored in log and retrieved with `ssc_module_log`
-SSCEXPORT int ssc_stateful_module_create(ssc_module_t p_mod, ssc_data_t p_data);
+SSCEXPORT int ssc_stateful_module_setup(ssc_module_t p_mod, ssc_data_t p_data);
 
 #ifndef __SSCLINKAGECPP__
 

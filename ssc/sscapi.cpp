@@ -1185,7 +1185,7 @@ SSCEXPORT const char *get_python_path() {
         return nullptr;
 }
 
-SSCEXPORT int ssc_stateful_module_create(ssc_module_t p_mod, ssc_data_t p_data) {
+SSCEXPORT int ssc_stateful_module_setup(ssc_module_t p_mod, ssc_data_t p_data) {
     auto cm = static_cast<compute_module*>(p_mod);
     if (!cm)
         return 0;
