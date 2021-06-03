@@ -537,8 +537,7 @@ void C_nuclear::solve_for_mass_flow_and_defocus(s_steady_state_soln &soln, doubl
 		if (soln.nuc_is_off)
 			break;
 
-        field_eff = 1.0
-        soln.q_dot_inc = calculate_thermal_output(m_q_dot_nuc_des, field_eff, soln.od_control);  // Calculate flux profiles
+        soln.q_dot_inc = calculate_thermal_output(m_q_dot_nuc_des, 1.0, soln.od_control);  // Calculate flux profiles
 		solve_for_mass_flow(soln);	// Iterative calculation of mass flow to produce target outlet temperature
 
 		if (soln.nuc_is_off)
