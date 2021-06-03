@@ -274,7 +274,7 @@ void C_nuclear::call(const C_csp_weatherreader::S_outputs &weather,
 
     //--- Set mass flow and calculate final solution
 	// removed clearsky calls, not relevant to nuclear plant
-    soln.q_dot_inc = m_q_dot_nuc_des;  // Absorbed flux profiles at actual DNI and clear-sky defocus
+    soln.q_dot_inc = calculate_thermal_output(m_q_dot_nuc_des, 1.0, soln.od_control);  // Absorbed flux profiles at actual DNI and clear-sky defocus
     calculate_steady_state_soln(soln, 0.00025);  // Solve energy balances at clearsky mass flow rate and actual DNI conditions
 
     // Set variables for use in the rest of the solution
