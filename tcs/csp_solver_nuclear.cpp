@@ -537,7 +537,8 @@ void C_nuclear::solve_for_mass_flow_and_defocus(s_steady_state_soln &soln, doubl
 		if (soln.nuc_is_off)
 			break;
 
-		soln.q_dot_inc = m_q_dot_nuc_des;  // Calculate flux profiles
+        field_eff = 1.0
+        soln.q_dot_inc = calculate_thermal_output(m_q_dot_nuc_des, field_eff, soln.od_control);  // Calculate flux profiles
 		solve_for_mass_flow(soln);	// Iterative calculation of mass flow to produce target outlet temperature
 
 		if (soln.nuc_is_off)
@@ -658,6 +659,16 @@ void C_nuclear::solve_for_mass_flow(s_steady_state_soln &soln)
 
 	return;
 }
+
+// Calculate thermal output
+double C_nuclear::calculate_thermal_output(double q_dot_des, double field_eff, double od_control)
+{
+
+	double nuclear_eff_adj = field_eff * od_control;
+
+	return q_dot_des * nuclear_eff_adj;
+}
+
 
 // Calculate steady state temperature and heat loss profiles for a given mass flow and incident flux
 void C_nuclear::calculate_steady_state_soln(s_steady_state_soln &soln, double tol, int max_iter)

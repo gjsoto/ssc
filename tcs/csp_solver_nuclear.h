@@ -164,6 +164,7 @@ public:
 	void solve_for_mass_flow(s_steady_state_soln &soln);
 	void solve_for_mass_flow_and_defocus(s_steady_state_soln &soln, double m_dot_htf_max);
 	void solve_for_defocus_given_flow(s_steady_state_soln &soln);
+    double calculate_thermal_output(double dni, double field_eff, double od_control);
 
 	void set_material_properties();
 
