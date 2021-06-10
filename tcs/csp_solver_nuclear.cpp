@@ -850,7 +850,7 @@ void C_nuclear::calculate_steady_state_soln(s_steady_state_soln &soln, double to
     soln.Q_conv_sum = soln.q_dot_conv;
     soln.Q_rad_sum = soln.q_dot_rad;
     soln.Q_abs_sum = soln.q_dot_abs;
-    soln.Q_inc_min = fmin(soln.Q_inc_min, soln.q_dot_inc);-
+    soln.Q_inc_min = fmin(soln.Q_inc_min, soln.q_dot_inc);
 
 	soln.Q_thermal = soln.Q_abs_sum - soln.Q_dot_piping_loss;
 
