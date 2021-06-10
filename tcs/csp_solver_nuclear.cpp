@@ -113,6 +113,9 @@ void C_nuclear::init()
 	m_q_dot_inc_min = m_q_dot_nuc_des * m_f_rec_min ;	//[W] Minimum receiver thermal power
     
     m_m_dot_htf_max = m_m_dot_htf_max_frac * m_m_dot_htf_des;	//[kg/s]
+    
+    m_E_su_prev = 0.0;
+    m_t_su_prev = 0.0;
 
 }
 
@@ -339,7 +342,7 @@ void C_nuclear::call(const C_csp_weatherreader::S_outputs &weather,
 			break;
 
 		case C_csp_collector_receiver::ON:
-			
+        
 			if( m_E_su_prev > 0.0 || m_t_su_prev > 0.0 )
 			{
 				throw(C_csp_exception("Can't have excess startup energy, STARTUP mode node allowed", "Nuclear Island"));
@@ -721,7 +724,7 @@ void C_nuclear::calculate_steady_state_soln(s_steady_state_soln &soln, double to
         soln.T_panel_out = T_panel_out_guess;
         soln.T_panel_in  = T_panel_in_guess;
         soln.T_panel_ave = (soln.T_panel_in + soln.T_panel_out) / 2.0;		//[K] The average coolant temperature in each control volume
-        T_film = (soln.T_s + T_amb) / 2.0;									//[K] Film temperature
+        //T_film = (soln.T_s + T_amb) / 2.0;									//[K] Film temperature (only needed for convective losses
 
 		// Calculate the average surface temperature
 		double T_film_ave = (T_amb + T_salt_hot_guess) / 2.0;
@@ -847,7 +850,7 @@ void C_nuclear::calculate_steady_state_soln(s_steady_state_soln &soln, double to
     soln.Q_conv_sum = soln.q_dot_conv;
     soln.Q_rad_sum = soln.q_dot_rad;
     soln.Q_abs_sum = soln.q_dot_abs;
-    soln.Q_inc_min = fmin(soln.Q_inc_min, soln.q_dot_inc);
+    soln.Q_inc_min = fmin(soln.Q_inc_min, soln.q_dot_inc);-
 
 	soln.Q_thermal = soln.Q_abs_sum - soln.Q_dot_piping_loss;
 
