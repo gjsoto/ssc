@@ -2030,7 +2030,7 @@ public:
         nuclear_island->m_h_tower = as_double("h_tower");                              //[m] height of "receiver" tower -- used for pumping and flow speeds
         nuclear_island->m_h_rec   = as_double("rec_height");                           //[m] height of "receiver" tower -- used for pumping and flow speeds
         nuclear_island->m_epsilon = as_double("epsilon");                              //[-] efficiency of heat source -- usually set to 1 for our case
-
+        
         // previously, this was a 'collector_receiver' object derived from the 
         //   `mspt_collector_receiver` class taking in a `receiver` and `heliostatfield` object as inputs.
         // here, I renamed 'collector_receiver' to 'heating_plant' to be more general and the object is now derived from
@@ -3033,7 +3033,7 @@ public:
         double rec_startup_time_remain_final, rec_startup_energy_remain_final;
         rec_startup_time_remain_final = rec_startup_energy_remain_final = std::numeric_limits<double>::quiet_NaN();
         if (!as_boolean("is_rec_model_trans") && !as_boolean("is_rec_startup_trans")) {
-            receiver->get_converged_values(rec_op_mode_final,
+            nuclear_island->get_converged_values(rec_op_mode_final,
                 rec_startup_energy_remain_final, rec_startup_time_remain_final);
         }
         assign("rec_op_mode_final", (ssc_number_t) rec_op_mode_final);
